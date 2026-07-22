@@ -11,10 +11,6 @@ build() {
     # Add /mnt/enderarch directory tree for COW storage
     add_dir /mnt/enderarch/cow/work
     add_dir /mnt/enderarch/cow/upper
-    add_dir /mnt/enderarch/docs
-    
-    # Add documentation
-    add_file /mnt/enderarch/docs/common-issues.txt /mnt/enderarch/docs/common-issues.txt 2>/dev/null || true
 }
 
 help() {

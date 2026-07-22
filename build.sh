@@ -188,8 +188,7 @@ else
                 ;;
             enderarch)
                 cp "${SCRIPTS_DIR}/init-enderarch" "${WORKDIR}/lib/enderarch/init-mode"
-                cp "${OVERLAY_DIR}/enderloader/mnt/enderarch/docs/common-issues.txt" \
-                   "${WORKDIR}/mnt/enderarch/docs/" 2>/dev/null || true
+                # Enderarch initrd is self-contained — no external docs needed
                 ;;
             enderloader)
                 cp "${SCRIPTS_DIR}/init-enderloader" "${WORKDIR}/lib/enderarch/init-mode"
