@@ -168,6 +168,17 @@ else
     # Register x86_64 emulator for ARM boot (if available)
     cp "/usr/bin/qemu-x86_64-static" "${WORKDIR}/usr/bin/" 2>/dev/null || true
 
+    # Detect installed kernel versions in workdir for -k flag
+    KERNEL_VERSIONS=( $(ls "${WORKDIR}/usr/lib/modules/" 2>/dev/null | sort -V) )
+    if [[ ${#KERNEL_VERSIONS[@]} -eq 0 ]]; then
+        echo "    ERROR: No kernel modules found in ${WORKDIR}/usr/lib/modules/"
+        exit 1
+    fi
+    # Use the first (newest) kernel version for mkinitcpio's -k flag.
+    # Our custom hooks add modules from ALL kernels regardless.
+    KERNEL_VER="${KERNEL_VERSIONS[-1]}"
+    echo "    Using kernel version: ${KERNEL_VER}"
+
     for preset in "${PRESETS[@]}"; do
         base="$(basename "$preset")"          # mkinitcpio-common.conf
         name="${base#mkinitcpio-}"            # common.conf
@@ -206,7 +217,7 @@ else
 
         echo "    Building initrd: ${output_name}"
         # Run mkinitcpio inside the chroot so it finds modules + binaries
-        arch-chroot "$WORKDIR" /usr/bin/mkinitcpio -c "/etc/${base}" -g "/boot/${output_name}" 2>&1 || {
+        arch-chroot "$WORKDIR" /usr/bin/mkinitcpio -k "${KERNEL_VER}" -c "/etc/${base}" -g "/boot/${output_name}" 2>&1 || {
             echo "    ERROR: initrd build for ${name} failed!"
             exit 1
         }
@@ -287,57 +298,62 @@ if command -v qemu-aarch64-static &>/dev/null; then
         # Register x86_64 emulator for ARM boot
         cp "/usr/bin/qemu-x86_64-static" "${ARM_WORKDIR}/usr/bin/" 2>/dev/null || true
 
-        # Build ARM64 initrds using the same mkinitcpio presets
-        shopt -s nullglob
-        ARM_PRESETS=( "${PROFILES_DIR}/${FLAVOR}/mkinitcpio-"*.conf )
-        shopt -u nullglob
+        # Detect ARM kernel version for -k flag
+        ARM_KERNEL_VERSIONS=( $(ls "${ARM_WORKDIR}/usr/lib/modules/" 2>/dev/null | sort -V) )
+        if [[ ${#ARM_KERNEL_VERSIONS[@]} -eq 0 ]]; then
+            echo "    Skipping ARM64: no kernel modules found"
+        else
+            ARM_KERNEL_VER="${ARM_KERNEL_VERSIONS[-1]}"
+            echo "    Using ARM kernel version: ${ARM_KERNEL_VER}"
 
-        for preset in "${ARM_PRESETS[@]}"; do
-            base="$(basename "$preset")"
-            name="${base#mkinitcpio-}"
-            name="${name%.conf}"
-            name_upper="${name^^}"
-            output_var="INITRD_${name_upper}"
+            # Build ARM64 initrds using the same mkinitcpio presets
+            shopt -s nullglob
+            ARM_PRESETS=( "${PROFILES_DIR}/${FLAVOR}/mkinitcpio-"*.conf )
+            shopt -u nullglob
 
-            if [[ -n "${!output_var:-}" ]]; then
-                output_name="${!output_var}"
-            else
-                output_name="initramfs-${name}.img"
-            fi
+            for preset in "${ARM_PRESETS[@]}"; do
+                base="$(basename "$preset")"
+                name="${base#mkinitcpio-}"
+                name="${name%.conf}"
+                name_upper="${name^^}"
+                output_var="INITRD_${name_upper}"
 
-            output_path="${ISO_DIR}/boot/arm64/${output_name}"
+                if [[ -n "${!output_var:-}" ]]; then
+                    output_name="${!output_var}"
+                else
+                    output_name="initramfs-${name}.img"
+                fi
 
-            # Stage correct init-mode for this initrd type
-            # Remove any previous init-mode first
-            rm -f "${ARM_WORKDIR}/lib/enderarch/init-mode"
-            case "$name" in
-                common)
-                    # init-common is already staged as /init above
-                    ;;
-                enderarch)
-                    cp "${SCRIPTS_DIR}/init-enderarch" "${ARM_WORKDIR}/lib/enderarch/init-mode"
-                    cp "${SCRIPTS_DIR}/setup-overlay" "${ARM_WORKDIR}/lib/enderarch/"
-                    ;;
-                enderloader)
-                    cp "${SCRIPTS_DIR}/init-enderloader" "${ARM_WORKDIR}/lib/enderarch/init-mode"
-                    cp "${SCRIPTS_DIR}/enderarch-scan" "${ARM_WORKDIR}/lib/enderarch/"
-                    cp -a "${OVERLAY_DIR}/enderloader/mnt/enderloader/." \
-                       "${ARM_WORKDIR}/mnt/enderloader/" 2>/dev/null || true
-                    ;;
-            esac
+                output_path="${ISO_DIR}/boot/arm64/${output_name}"
 
-            echo "    Building ARM64 initrd: ${output_name}"
-            # Copy preset into chroot config path
-            cp "$preset" "${ARM_WORKDIR}/etc/${base}"
-            # Run mkinitcpio inside the chroot (ARM-native via qemu)
-            arch-chroot "$ARM_WORKDIR" /usr/bin/mkinitcpio -c "/etc/${base}" -g "/boot/${output_name}" 2>&1 || {
-                echo "    Warning: ARM64 initrd build for ${name} failed (see above)"
-            }
-            # Copy result from chroot to ISO staging
-            if [[ -f "${ARM_WORKDIR}/boot/${output_name}" ]]; then
-                cp "${ARM_WORKDIR}/boot/${output_name}" "$output_path"
-            fi
-        done
+                # Stage correct init-mode for this initrd type
+                rm -f "${ARM_WORKDIR}/lib/enderarch/init-mode"
+                case "$name" in
+                    common)
+                        # init-common is already staged as /init above
+                        ;;
+                    enderarch)
+                        cp "${SCRIPTS_DIR}/init-enderarch" "${ARM_WORKDIR}/lib/enderarch/init-mode"
+                        cp "${SCRIPTS_DIR}/setup-overlay" "${ARM_WORKDIR}/lib/enderarch/"
+                        ;;
+                    enderloader)
+                        cp "${SCRIPTS_DIR}/init-enderloader" "${ARM_WORKDIR}/lib/enderarch/init-mode"
+                        cp "${SCRIPTS_DIR}/enderarch-scan" "${ARM_WORKDIR}/lib/enderarch/"
+                        cp -a "${OVERLAY_DIR}/enderloader/mnt/enderloader/." \
+                           "${ARM_WORKDIR}/mnt/enderloader/" 2>/dev/null || true
+                        ;;
+                esac
+
+                echo "    Building ARM64 initrd: ${output_name}"
+                cp "$preset" "${ARM_WORKDIR}/etc/${base}"
+                arch-chroot "$ARM_WORKDIR" /usr/bin/mkinitcpio -k "${ARM_KERNEL_VER}" -c "/etc/${base}" -g "/boot/${output_name}" 2>&1 || {
+                    echo "    Warning: ARM64 initrd build for ${name} failed (see above)"
+                }
+                if [[ -f "${ARM_WORKDIR}/boot/${output_name}" ]]; then
+                    cp "${ARM_WORKDIR}/boot/${output_name}" "$output_path"
+                fi
+            done
+        fi
 
         # Copy ARM64 kernel images
         echo "    Copying ARM64 kernel images..."
