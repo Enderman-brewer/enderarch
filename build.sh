@@ -560,10 +560,16 @@ XORRISO_ARGS=(
     -V "ENDERARCH_${FLAVOR}"
     -iso-level 3
     -full-iso9660-filenames
-    -eltorito-boot isolinux/isolinux.bin
-    -eltorito-catalog isolinux/boot.cat
-    -no-emul-boot -boot-load-size 4 -boot-info-table
 )
+
+# BIOS (isolinux) boot — only if isolinux was copied
+if [[ -f "${ISO_DIR}/isolinux/isolinux.bin" ]]; then
+    XORRISO_ARGS+=(
+        -eltorito-boot isolinux/isolinux.bin
+        -eltorito-catalog isolinux/boot.cat
+        -no-emul-boot -boot-load-size 4 -boot-info-table
+    )
+fi
 
 # MBR for hybrid BIOS/UEFI boot
 if [[ -f "/usr/lib/syslinux/bios/isohdpfx.bin" ]]; then
