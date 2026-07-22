@@ -1,0 +1,26 @@
+#!/bin/sh
+# find-squashfs — Locate /LiveOS/rootfs.sfs on boot media
+# Returns path to rootfs.sfs or exits with error
+
+SFS_PATH=""
+for dev in /dev/sr0 /dev/sr1 /dev/disk/by-label/EARCH* /dev/disk/by-uuid/*; do
+    [ -b "$dev" ] || continue
+    mount -t iso9660 -o ro "$dev" /mnt/iso 2>/dev/null || continue
+    if [ -f /mnt/iso/LiveOS/rootfs.sfs ]; then
+        echo "/mnt/iso/LiveOS/rootfs.sfs"
+        exit 0
+    fi
+    umount /mnt/iso 2>/dev/null || true
+done
+# Fallback: try all block devices
+for dev in $(ls /dev/sd* /dev/nvme* /dev/mmcblk* 2>/dev/null | sort -u || true); do
+    [ -b "$dev" ] || continue
+    mount -o ro "$dev" /mnt/iso 2>/dev/null || continue
+    if [ -f /mnt/iso/LiveOS/rootfs.sfs ]; then
+        echo "/mnt/iso/LiveOS/rootfs.sfs"
+        exit 0
+    fi
+    umount /mnt/iso 2>/dev/null || true
+done
+echo "ERROR: rootfs.sfs not found" >&2
+exit 1

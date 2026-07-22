@@ -1,0 +1,28 @@
+Enderloader FAQ
+===============
+
+Q: What is Enderloader?
+A: A recovery environment for damaged or unbootable Linux systems.
+   It scans your disks, lets you mount the root filesystem, and
+   provides tools to fix common issues.
+
+Q: How do I chroot into my system?
+A: Select option 2 from the menu, or after mounting:
+   mount --bind /dev /newroot/dev
+   mount --bind /proc /newroot/proc
+   mount --bind /sys /newroot/sys
+   chroot /newroot /bin/bash
+
+Q: How do I reinstall GRUB?
+A: chroot into the system, then:
+   grub-install /dev/sdX
+   grub-mkconfig -o /boot/grub/grub.cfg
+
+Q: My system won't boot after kernel update, what do I do?
+A: Chroot in and downgrade the kernel:
+   pacman -U /var/cache/pacman/pkg/linux-<old-version>.pkg.tar.zst
+
+Q: Where are my files?
+A: They're in /newroot after mounting. Use:
+   ls /newroot/home/
+   ls /newroot/etc/

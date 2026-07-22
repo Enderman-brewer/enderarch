@@ -1,0 +1,8 @@
+out/
+iso/
+*.iso
+workdir/
+arm-bootstrap/
+*.sfs
+*.img
+*.swp

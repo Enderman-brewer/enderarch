@@ -1,0 +1,55 @@
+# install/enderarch-common — Gather files for common initrd
+# Merges modules from all installed kernels
+
+build() {
+    echo "enderarch-common: adding all kernel modules (unified across linux + linux-lts)"
+    
+    # Add ALL module trees for each installed kernel version
+    # This gives us a unified initrd with modules from both linux and linux-lts
+    for KERN_DIR in /usr/lib/modules/*/; do
+        [ -d "$KERN_DIR" ] || continue
+        KVER=$(basename "$KERN_DIR")
+        echo "enderarch-common: adding modules for kernel $KVER"
+        add_full_dir "$KERN_DIR"
+    done
+    
+    # Add binaries
+    add_binary /usr/bin/busybox
+    add_binary /usr/bin/mount
+    add_binary /usr/bin/umount
+    add_binary /usr/bin/modprobe
+    add_binary /usr/bin/udevadm
+    add_binary /usr/bin/udevd
+    add_binary /usr/bin/blkid
+    add_binary /usr/bin/lsblk
+    add_binary /usr/bin/df
+    add_binary /usr/bin/cat
+    add_binary /usr/bin/grep
+    add_binary /usr/bin/awk
+    add_binary /usr/bin/sed
+    add_binary /usr/bin/sh
+    add_binary /usr/bin/mkdir
+    add_binary /usr/bin/rmdir
+    add_binary /usr/bin/ln
+    add_binary /usr/bin/cp
+    add_binary /usr/bin/mv
+    add_binary /usr/bin/rm
+    add_binary /usr/bin/echo
+    add_binary /usr/bin/printf
+    add_binary /usr/bin/readlink
+    add_binary /usr/bin/sleep
+    add_binary /usr/bin/switch_root
+    
+    # Add init scripts
+    add_runscript
+}
+
+help() {
+    cat <<HELPEOF
+This hook gathers the Enderarch common initrd contents:
+- Kernel modules from all installed kernels (unified)
+- Core userspace binaries (busybox-based)
+- /init dispatcher
+- binfmt setup (ARM) and partition scanning helpers
+HELPEOF
+}

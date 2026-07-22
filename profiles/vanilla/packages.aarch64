@@ -1,0 +1,27 @@
+# Enderarch Vanilla — ARM64 packages
+# Base system
+base
+linux-aarch64
+linux-lts-aarch64
+linux-firmware
+sudo
+grub
+efibootmgr
+openssh
+vim
+man-db
+# Networking
+networkmanager
+# Tools
+tmux
+fdisk
+parted
+arch-install-scripts
+ntfs-3g
+btrfs-progs
+dosfstools
+e2fsprogs
+# ARM emulation for x86_64 rootfs
+qemu-user-static-bin
+# Console extras
+htop

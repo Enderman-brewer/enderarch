@@ -1,0 +1,26 @@
+Enderloader — Common Issues
+===========================
+
+1. "No partitions found"
+   - Make sure your disk is connected and detected
+   - Check BIOS settings for SATA/NVMe mode
+   - Run: lsblk
+
+2. "Mount failed"
+   - Try specifying the filesystem type manually
+   - The partition may be encrypted (LUKS)
+   - For LUKS: cryptsetup open /dev/sdX2 cryptroot
+
+3. "switch_root failed"
+   - The target system's /sbin/init may be missing or broken
+   - Try option 2 (chroot) to investigate
+   - Reinstall packages: pacman -S systemd
+
+4. "Network not available"
+   - Run: systemctl start NetworkManager
+   - Or: nmtui
+   - Or: dhcpcd <interface>
+
+5. For more help:
+   - /mnt/enderloader/docs/faq.txt
+   - Run: cat /mnt/enderloader/docs/faq.txt

@@ -1,0 +1,9 @@
+# hooks/enderarch-common — Common initrd runtime hook
+# This runs during mkinitcpio's busybox init sequence
+# Our custom /init replaces the default, so this is minimal
+
+run_hook() {
+    # If we get here, the default /init is running, not our custom one
+    # This is a fallback — our /init from install hook overrides it
+    :
+}

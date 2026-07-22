@@ -1,0 +1,25 @@
+# Enderarch Vanilla — x86_64 packages
+# Base system
+base
+linux
+linux-lts
+linux-firmware
+sudo
+grub
+efibootmgr
+openssh
+vim
+man-db
+# Networking
+networkmanager
+# Tools
+tmux
+fdisk
+parted
+arch-install-scripts
+ntfs-3g
+btrfs-progs
+dosfstools
+e2fsprogs
+# Console extras
+htop

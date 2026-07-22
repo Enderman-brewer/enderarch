@@ -1,0 +1,4 @@
+# hooks/enderarch-init — Enderarch runtime hook (fallback)
+run_hook() {
+    :
+}

@@ -1,0 +1,14 @@
+#!/bin/sh
+# setup-overlay — Create overlayfs for live environment
+# Usage: setup-overlay <lower> <upper> <work> <merged>
+# Mode determined by kernel cmdline
+
+LOWER="$1"; UPPER="$2"; WORK="$3"; MERGED="$4"
+[ -n "$LOWER" ] || { echo "Usage: setup-overlay <lower> <upper> <work> <merged>"; exit 1; }
+
+mkdir -p "$UPPER" "$WORK" "$MERGED"
+mount -t overlay overlay -o lowerdir="$LOWER",upperdir="$UPPER",workdir="$WORK" "$MERGED" 2>/dev/null || {
+    echo "setup-overlay: overlay mount failed"
+    exit 1
+}
+echo "setup-overlay: mounted overlay on $MERGED"

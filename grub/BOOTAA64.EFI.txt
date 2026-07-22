@@ -1,0 +1,4 @@
+BOOTAA64.EFI is built at ISO assembly time using:
+grub-mkimage -O arm64-efi -p /boot/grub -o BOOTAA64.EFI -c embed.cfg \
+  part_msdos part_gpt fat iso9660 squash4 linux loopback search normal configfile \
+  echo ls reboot halt efi_gop

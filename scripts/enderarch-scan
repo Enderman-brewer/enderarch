@@ -1,0 +1,25 @@
+#!/bin/sh
+# enderarch-scan — Scan and inspect partitions
+# Outputs tab-separated: PART_ID FSTYPE HAS_LINUX HAS_BOOTLOADER HAS_FSTAB OS_NAME SIZE_BYTES
+
+for part in $(ls /dev/sd*[0-9] /dev/nvme*n*p* /dev/mmcblk*p* 2>/dev/null | sort || true); do
+    [ -b "$part" ] || continue
+    PART_ID=$(echo "$part" | sed 's|/dev/||')
+    mkdir -p "/tmp/scan-${PART_ID}"
+    mount -o ro "$part" "/tmp/scan-${PART_ID}" 2>/dev/null || continue
+    
+    FSTYPE=$(mount | grep "scan-${PART_ID}" | awk '{print $5}')
+    HAS_LINUX="0"; HAS_BOOT="0"; HAS_FSTAB="0"; OS_NAME="unknown"
+    
+    [ -f "/tmp/scan-${PART_ID}/sbin/init" -o -f "/tmp/scan-${PART_ID}/bin/bash" ] && HAS_LINUX="1"
+    [ -d "/tmp/scan-${PART_ID}/boot/grub" ] && HAS_BOOT="1"
+    [ -f "/tmp/scan-${PART_ID}/etc/fstab" ] && HAS_FSTAB="1"
+    [ -f "/tmp/scan-${PART_ID}/etc/os-release" ] && OS_NAME=$(grep "^PRETTY_NAME=" "/tmp/scan-${PART_ID}/etc/os-release" | cut -d= -f2 | tr -d '"' 2>/dev/null || echo "unknown")
+    
+    SIZE=$(df -B1 "/tmp/scan-${PART_ID}" | tail -1 | awk '{print $2}')
+    
+    echo "${PART_ID}\t${FSTYPE}\t${HAS_LINUX}\t${HAS_BOOT}\t${HAS_FSTAB}\t${OS_NAME}\t${SIZE}"
+    
+    umount "/tmp/scan-${PART_ID}" 2>/dev/null || true
+    rmdir "/tmp/scan-${PART_ID}" 2>/dev/null || true
+done

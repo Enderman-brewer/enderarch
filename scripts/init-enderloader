@@ -1,0 +1,161 @@
+#!/bin/sh
+# Enderloader Recovery — /lib/enderarch/init-mode
+
+echo ""
+echo "============================================"
+echo "  Enderloader — System Recovery Environment"
+echo "============================================"
+echo ""
+
+# Scan all block devices
+echo "ENDERLOADER: Scanning block devices..."
+RESULTS=""
+PART_COUNT=0
+
+# Gather partition info
+for part in $(ls /dev/sd*[0-9] /dev/nvme*n*p* /dev/mmcblk*p* 2>/dev/null | sort || true); do
+    [ -b "$part" ] || continue
+    PART_ID=$(echo "$part" | sed 's|/dev/||')
+    
+    mkdir -p "/mnt/mountpoint-${PART_ID}"
+    if mount -o ro "$part" "/mnt/mountpoint-${PART_ID}" 2>/dev/null; then
+        PART_COUNT=$((PART_COUNT + 1))
+        
+        # Collect info
+        HAS_LINUX="no"; HAS_BOOTLOADER="no"; HAS_FSTAB="no"; HAS_OSRELEASE=""
+        FSTYPE=""
+        
+        FSTYPE=$(mount | grep "mountpoint-${PART_ID}" | awk '{print $5}')
+        
+        [ -f "/mnt/mountpoint-${PART_ID}/sbin/init" ] && HAS_LINUX="yes"
+        [ -f "/mnt/mountpoint-${PART_ID}/bin/bash" ] && HAS_LINUX="yes"
+        [ -d "/mnt/mountpoint-${PART_ID}/boot/grub" ] && HAS_BOOTLOADER="yes"
+        [ -f "/mnt/mountpoint-${PART_ID}/etc/fstab" ] && HAS_FSTAB="yes"
+        if [ -f "/mnt/mountpoint-${PART_ID}/etc/os-release" ]; then
+            HAS_OSRELEASE=$(grep "^PRETTY_NAME=" "/mnt/mountpoint-${PART_ID}/etc/os-release" | cut -d= -f2 | tr -d '"' 2>/dev/null || echo "unknown")
+        fi
+        [ -z "$HAS_OSRELEASE" ] && HAS_OSRELEASE="unknown"
+        
+        SIZE_KB=$(df -k "/mnt/mountpoint-${PART_ID}" | tail -1 | awk '{print $2}')
+        USED_KB=$(df -k "/mnt/mountpoint-${PART_ID}" | tail -1 | awk '{print $3}')
+        
+        RESULTS="${RESULTS}${PART_COUNT}) ${part} (${FSTYPE})"
+        if [ "$HAS_LINUX" = "yes" ]; then RESULTS="${RESULTS} [LINUX]"; fi
+        if [ "$HAS_BOOTLOADER" = "yes" ]; then RESULTS="${RESULTS} [BOOT]"; fi
+        RESULTS="${RESULTS}\n   OS: ${HAS_OSRELEASE}"
+        RESULTS="${RESULTS}\n   Size: ${SIZE_KB}K Used: ${USED_KB}K"
+        RESULTS="${RESULTS}\n   fstab: ${HAS_FSTAB}"
+        RESULTS="${RESULTS}\n"
+        
+        umount "/mnt/mountpoint-${PART_ID}" 2>/dev/null || true
+        rmdir "/mnt/mountpoint-${PART_ID}" 2>/dev/null || true
+    fi
+done
+
+if [ "$PART_COUNT" -eq 0 ]; then
+    echo "ENDERLOADER: No partitions found!"
+    echo "ENDERLOADER: Dropping to shell"
+    exec sh
+fi
+
+# Show results and prompt
+echo ""
+echo "Found ${PART_COUNT} partition(s):"
+echo ""
+printf "%b" "$RESULTS"
+echo ""
+echo "Enter partition number to mount (or 's' for shell, 'r' to rescan):"
+printf "Choice [1-%d]: " "$PART_COUNT"
+
+read -r CHOICE
+
+case "$CHOICE" in
+    s|S|shell)
+        echo "ENDERLOADER: Dropping to shell"
+        exec sh
+        ;;
+    r|R|rescan)
+        echo "ENDERLOADER: Rescanning..."
+        exec /lib/enderarch/init-mode
+        ;;
+    '')
+        # Default: use partition 1
+        CHOICE=1
+        ;;
+    *)
+        # Use whatever was typed
+        ;;
+esac
+
+# Find the selected partition
+SELECTED=""
+IDX=0
+for part in $(ls /dev/sd*[0-9] /dev/nvme*n*p* /dev/mmcblk*p* 2>/dev/null | sort || true); do
+    [ -b "$part" ] || continue
+    IDX=$((IDX + 1))
+    if [ "$IDX" = "$CHOICE" ]; then
+        SELECTED="$part"
+        break
+    fi
+done
+
+if [ -z "$SELECTED" ]; then
+    echo "ENDERLOADER: Invalid choice!"
+    exec sh
+fi
+
+echo ""
+echo "ENDERLOADER: Mounting ${SELECTED} on /newroot"
+
+mount "$SELECTED" /newroot 2>/dev/null || {
+    echo "ENDERLOADER: Mount failed! Trying with filesystem type..."
+    echo "Available filesystems: ext4 btrfs xfs ntfs3 vfat"
+    printf "Filesystem: "; read -r FSTYPE
+    mount -t "$FSTYPE" "$SELECTED" /newroot 2>/dev/null || {
+        echo "ENDERLOADER: Mount failed! Dropping to shell."
+        exec sh
+    }
+}
+
+# Bind-mount enderloader assets
+mkdir -p /newroot/mnt/enderloader
+mount --bind /mnt/enderloader /newroot/mnt/enderloader 2>/dev/null || true
+
+# Bind kernel modules from the live environment
+mkdir -p /newroot/lib/modules 2>/dev/null || true
+mount --bind /lib/modules /newroot/lib/modules 2>/dev/null || true
+
+echo ""
+echo "============================================"
+echo "  ${SELECTED} mounted on /newroot"
+echo "  /mnt/enderloader bind-mounted"
+echo "============================================"
+echo ""
+echo "What would you like to do?"
+echo "  1) switch_root — boot into the installed system"
+echo "  2) chroot — enter the installed system from shell"
+echo "  3) shell — stay in recovery shell"
+echo ""
+printf "Choice [1-3] (default: 1): "
+
+read -r ACTION
+
+case "$ACTION" in
+    2|chroot)
+        echo "ENDERLOADER: chrooting into /newroot"
+        mount --bind /dev /newroot/dev 2>/dev/null || true
+        mount --bind /proc /newroot/proc 2>/dev/null || true
+        mount --bind /sys /newroot/sys 2>/dev/null || true
+        exec chroot /newroot /bin/bash
+        ;;
+    3|shell)
+        echo "ENDERLOADER: Dropping to recovery shell"
+        echo "The target system is mounted at /newroot"
+        exec sh
+        ;;
+    *)
+        echo "ENDERLOADER: Attempting switch_root..."
+        udevadm control --exit 2>/dev/null || true
+        exec switch_root /newroot /sbin/init
+        ;;
+esac

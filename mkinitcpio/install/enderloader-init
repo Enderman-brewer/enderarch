@@ -1,0 +1,30 @@
+# install/enderloader-init — Enderloader recovery initrd
+
+build() {
+    # Add the init-mode script
+    add_file /lib/enderarch/init-mode /lib/enderarch/init-mode
+    
+    # Add helper scripts
+    add_file /lib/enderarch/enderarch-scan /lib/enderarch/enderarch-scan
+    
+    # Add /mnt/enderloader directory tree with all assets
+    add_dir /mnt/enderloader/docs
+    add_dir /mnt/enderloader/bin
+    add_dir /mnt/enderloader/etc
+    
+    # Add documentation
+    add_file /mnt/enderloader/docs/common-issues.txt /mnt/enderloader/docs/common-issues.txt 2>/dev/null || true
+    add_file /mnt/enderloader/docs/faq.txt /mnt/enderloader/docs/faq.txt 2>/dev/null || true
+    
+    # Add the profile.d dropin
+    add_file /etc/profile.d/88-enderloader.sh /etc/profile.d/88-enderloader.sh
+}
+
+help() {
+    cat <<HELPEOF
+This hook gathers the Enderloader recovery initrd:
+- /lib/enderarch/init-mode — recovery TUI logic
+- /mnt/enderloader/ — docs, scripts, assets
+- /etc/profile.d/88-enderloader.sh — bind-mounted to real root
+HELPEOF
+}

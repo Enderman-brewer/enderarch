@@ -1,0 +1,4 @@
+# hooks/enderloader-init — Enderloader runtime hook (fallback)
+run_hook() {
+    :
+}

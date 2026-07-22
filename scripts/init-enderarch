@@ -1,0 +1,58 @@
+#!/bin/sh
+# Enderarch Live Boot — /lib/enderarch/init-mode
+# Called from common /init
+
+echo "ENDERARCH: Starting live boot"
+
+# Parse kernel cmdline
+CMDLINE=$(cat /proc/cmdline)
+MODE="ram"
+echo "$CMDLINE" | grep -q "enderarch.mode=cow" && MODE="cow"
+echo "ENDERARCH: Mode = $MODE"
+
+# Find the squashfs
+SFS_PATH=""
+for dev in /dev/sr0 /dev/sr1 /dev/disk/by-label/EARCH* /dev/disk/by-uuid/*; do
+    [ -b "$dev" ] || continue
+    mkdir -p /mnt/iso
+    mount -t iso9660 -o ro "$dev" /mnt/iso 2>/dev/null || continue
+    if [ -f /mnt/iso/LiveOS/rootfs.sfs ]; then
+        SFS_PATH="/mnt/iso/LiveOS/rootfs.sfs"
+        echo "ENDERARCH: Found rootfs.sfs on $dev"
+        break
+    fi
+    umount /mnt/iso 2>/dev/null || true
+done
+
+if [ -z "$SFS_PATH" ]; then
+    echo "ENDERARCH: ERROR — Could not find rootfs.sfs!"
+    echo "ENDERARCH: Try manually: mount /dev/sr0 /mnt/iso && ls /mnt/iso/LiveOS/"
+    exec sh
+fi
+
+# Mount squashfs
+mkdir -p /mnt/squashfs
+mount -t squashfs -o ro,loop "$SFS_PATH" /mnt/squashfs
+
+# Prepare overlay
+mkdir -p /mnt/enderarch/cow/work /mnt/enderarch/cow/upper
+mkdir -p /newroot
+
+if [ "$MODE" = "ram" ]; then
+    echo "ENDERARCH: RAM mode — copying rootfs to tmpfs (USB can be removed after)..."
+    mount -t tmpfs -o size=100% tmpfs /mnt/tmpfs
+    echo "    Copying files... this may take a minute."
+    cp -a /mnt/squashfs/. /mnt/tmpfs/
+    # Create writable overlay on top of the tmpfs copy
+    mount -t overlay overlay -o lowerdir=/mnt/tmpfs,upperdir=/mnt/enderarch/cow/upper,workdir=/mnt/enderarch/cow/work /newroot
+else
+    echo "ENDERARCH: USB COW mode — reading from USB, writes to tmpfs"
+    mount -t overlay overlay -o lowerdir=/mnt/squashfs,upperdir=/mnt/enderarch/cow/upper,workdir=/mnt/enderarch/cow/work /newroot
+fi
+
+echo "ENDERARCH: switch_root to live environment"
+
+# Clean up udev before switch_root
+udevadm control --exit 2>/dev/null || true
+
+exec switch_root /newroot /sbin/init

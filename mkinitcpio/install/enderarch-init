@@ -1,0 +1,27 @@
+# install/enderarch-init — Enderarch live boot initrd
+
+build() {
+    # Add the init-mode script
+    add_file /lib/enderarch/init-mode /lib/enderarch/init-mode
+    
+    # Add helper scripts
+    add_file /lib/enderarch/setup-overlay /lib/enderarch/setup-overlay
+    add_file /lib/enderarch/find-squashfs /lib/enderarch/find-squashfs
+    
+    # Add /mnt/enderarch directory tree for COW storage
+    add_dir /mnt/enderarch/cow/work
+    add_dir /mnt/enderarch/cow/upper
+    add_dir /mnt/enderarch/docs
+    
+    # Add documentation
+    add_file /mnt/enderarch/docs/common-issues.txt /mnt/enderarch/docs/common-issues.txt 2>/dev/null || true
+}
+
+help() {
+    cat <<HELPEOF
+This hook gathers the Enderarch live boot initrd:
+- /lib/enderarch/init-mode — main live boot logic
+- /mnt/enderarch/cow/ — overlay upper/work dirs
+- Documentation
+HELPEOF
+}
