@@ -102,8 +102,8 @@ done
 # ==================================================================
 # Phase 1: Installing base system (x86_64)
 # ==================================================================
-echo "==> Phase 1: Installing base system (x86_64)"
 if [[ $START_PHASE -le 1 ]]; then
+echo "==> Phase 1: Installing base system (x86_64)"
 
 PKG_FILE="${PROFILES_DIR}/${FLAVOR}/packages.x86_64"
 if [[ ! -f "$PKG_FILE" ]]; then
@@ -139,8 +139,8 @@ fi
 # ==================================================================
 # Phase 1b: Copying overlay files
 # ==================================================================
-echo "==> Phase 1b: Copying overlay files"
 if [[ $START_PHASE -le 2 ]]; then
+echo "==> Phase 1b: Copying overlay files"
 
 OVERLAY_SRC="${OVERLAY_DIR}/common"
 if [[ -d "$OVERLAY_SRC" ]]; then
@@ -172,8 +172,8 @@ fi
 # ==================================================================
 # Phase 2: Creating squashfs
 # ==================================================================
-echo "==> Phase 2: Creating squashfs"
 if [[ $START_PHASE -le 2 ]]; then
+echo "==> Phase 2: Creating squashfs"
 
 rm -f "$ROOTFS_SFS"
 echo "    Running mksquashfs (this may take a while)..."
@@ -183,8 +183,8 @@ fi
 # ==================================================================
 # Phase 3: Building x86_64 initrds
 # ==================================================================
-echo "==> Phase 3: Building x86_64 initrds"
 if [[ $START_PHASE -le 3 ]]; then
+echo "==> Phase 3: Building x86_64 initrds"
 
 shopt -s nullglob
 PRESETS=( "${PROFILES_DIR}/${FLAVOR}/mkinitcpio-"*.conf )
@@ -293,8 +293,8 @@ fi
 # ==================================================================
 # Phase 4: Building ARM64 initrds (if available)
 # ==================================================================
-echo "==> Phase 4: Building ARM64 initrds (if available)"
 if [[ $START_PHASE -le 4 ]]; then
+echo "==> Phase 4: Building ARM64 initrds (if available)"
 
 if command -v qemu-aarch64-static &>/dev/null; then
     ARM_WORKDIR="${SCRIPT_DIR}/workdir-${FLAVOR}-arm"
@@ -427,8 +427,8 @@ fi
 # ==================================================================
 # Phase 5: Staging ISO files
 # ==================================================================
-echo "==> Phase 5: Staging ISO files"
 if [[ $START_PHASE -le 5 ]]; then
+echo "==> Phase 5: Staging ISO files"
 
 # -- GRUB modules (copied from the host system) --
 if [[ -d "/usr/lib/grub" ]]; then
@@ -532,8 +532,8 @@ fi
 # ==================================================================
 # Phase 6: Generating ISO
 # ==================================================================
-echo "==> Phase 6: Generating ISO"
 if [[ $START_PHASE -le 6 ]]; then
+echo "==> Phase 6: Generating ISO"
 
 XORRISO_ARGS=(
     -as mkisofs
