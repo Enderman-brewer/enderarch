@@ -114,6 +114,20 @@ if [[ -d "$OVERLAY_FLAVOR" ]]; then
     cp -af "$OVERLAY_FLAVOR"/. "$WORKDIR/"
 fi
 
+# Enable systemd services
+echo "    Enabling systemd services..."
+arch-chroot "$WORKDIR" systemctl enable NetworkManager.service 2>/dev/null || true
+case "$FLAVOR" in
+    kgui)
+        arch-chroot "$WORKDIR" systemctl enable sddm.service 2>/dev/null || true
+        echo "    SDDM enabled for KGUI"
+        ;;
+    mingui)
+        arch-chroot "$WORKDIR" systemctl enable lightdm.service 2>/dev/null || true
+        echo "    LightDM enabled for MinGUI"
+        ;;
+esac
+
 # ==================================================================
 # Phase 2: Creating squashfs
 # ==================================================================
