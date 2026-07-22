@@ -526,19 +526,22 @@ fi
 
 # -- GRUB i386-pc BIOS boot fallback (if isolinux not available) --
 if [[ ! -f "${ISO_DIR}/isolinux/isolinux.bin" ]] && command -v grub-mkstandalone &>/dev/null; then
-    echo "    Building GRUB i386-pc BIOS boot image..."
-    GRUB_BIOS_IMG="${ISO_DIR}/boot/grub/i386-pc/core.img"
-    grub-mkstandalone -O i386-pc \
-        -o "$GRUB_BIOS_IMG" \
+    echo "    Building GRUB i386-pc BIOS boot image via grub-mkstandalone -O i386-pc-eltorito..."
+    GRUB_BIOS_CD="${ISO_DIR}/boot/grub/i386-pc/eltorito.img"
+    # Use grub-mkstandalone -O i386-pc-eltorito which properly prepends cdboot.img
+    # and patches the core.img offset/size at bytes 0x10/0x14 so cdboot.img can
+    # find and load core.img. Without this patch, the BIOS hangs after loading
+    # cdboot.img with "Missing OS" or a black screen.
+    # Use the already-processed grub.cfg from the ISO staging area (flavor already substituted).
+    grub-mkstandalone -O i386-pc-eltorito \
+        -o "$GRUB_BIOS_CD" \
         --modules="linux loopback iso9660 squash4 ext2 part_msdos part_gpt search search_fs_file normal configfile echo test true biosdisk" \
-        "boot/grub/grub.cfg=${GRUB_DIR}/grub.cfg" 2>/dev/null || true
-    if [[ -f "$GRUB_BIOS_IMG" ]]; then
-        echo "    Built GRUB i386-pc core.img for BIOS boot"
-        GRUB_BIOS_CD="${ISO_DIR}/boot/grub/i386-pc/eltorito.img"
-        cat /usr/lib/grub/i386-pc/cdboot.img "$GRUB_BIOS_IMG" > "$GRUB_BIOS_CD" 2>/dev/null || true
-        if [[ -f "$GRUB_BIOS_CD" ]]; then
-            echo "    Created GRUB i386-pc eltorito boot image"
-        fi
+        "boot/grub/grub.cfg=${ISO_DIR}/boot/grub/grub.cfg" 2>/dev/null || {
+        echo "    Warning: grub-mkstandalone failed for BIOS boot"
+        rm -f "$GRUB_BIOS_CD"
+    }
+    if [[ -f "$GRUB_BIOS_CD" ]]; then
+        echo "    Created GRUB i386-pc eltorito boot image"
     fi
 fi
 
@@ -616,12 +619,12 @@ fi
 
 # x86_64 UEFI boot entry
 if [[ -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
-    XORRISO_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/efi.img -no-emul-boot)
+    XORRISO_ARGS+=(-eltorito-alt-boot --efi-boot EFI/BOOT/efi.img -no-emul-boot)
 fi
 
 # ARM64 UEFI boot entry (separate alt-boot if EFI image contains AA64)
 if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" && ! -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
-    XORRISO_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/BOOTAA64.EFI -no-emul-boot)
+    XORRISO_ARGS+=(-eltorito-alt-boot --efi-boot EFI/BOOT/BOOTAA64.EFI -no-emul-boot)
 fi
 
 XORRISO_ARGS+=(-isohybrid-gpt-basdat)
