@@ -1,8 +1,40 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-FLAVOR="${1:?Usage: $0 <flavor>}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# --- Argument parsing ---
+FLAVOR=""
+START_PHASE=1
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --from-phase|--from)
+            START_PHASE="${2:?Missing phase number}"
+            shift 2
+            continue
+            ;;
+        -h|--help)
+            echo "Usage: $0 <flavor> [--from-phase N]"
+            echo ""
+            echo "  flavor:     vanilla | kgui | mingui"
+            echo "  --from-phase N  Start from phase N (1-6):"
+            echo "    1 = pacstrap + users (slow, requires network)"
+            echo "    2 = overlay + squashfs"
+            echo "    3 = x86_64 initrds"
+            echo "    4 = ARM64 initrds"
+            echo "    5 = stage ISO files"
+            echo "    6 = generate ISO"
+            exit 0
+            ;;
+        *)
+            [[ -z "$FLAVOR" ]] || { echo "Unknown argument: $1"; exit 1; }
+            FLAVOR="$1"
+            shift
+            ;;
+    esac
+done
+: "${FLAVOR:?Usage: $0 <flavor> [--from-phase N]}"
+[[ "$START_PHASE" =~ ^[1-6]$ ]] || { echo "Error: --from-phase must be 1-6"; exit 1; }
 
 # ------------------------------------------------------------------
 # Build configuration (mirrors config.mk for Make compatibility)
@@ -37,10 +69,15 @@ kernel_image_name() {
 }
 
 # ------------------------------------------------------------------
-# Clean and create working directory
+# Clean and create working directory (skip if --from-phase > 1)
 # ------------------------------------------------------------------
-rm -rf "$WORKDIR"
-mkdir -p "$WORKDIR"
+if [[ $START_PHASE -le 1 ]]; then
+    rm -rf "$WORKDIR"
+    mkdir -p "$WORKDIR"
+else
+    echo "==> Skipping workdir cleanup (--from-phase=$START_PHASE)"
+    mkdir -p "$WORKDIR"
+fi
 
 # Ensure the ISO staging skeleton exists
 mkdir -p "${ISO_DIR}/boot/x86_64" \
@@ -66,6 +103,7 @@ done
 # Phase 1: Installing base system (x86_64)
 # ==================================================================
 echo "==> Phase 1: Installing base system (x86_64)"
+if [[ $START_PHASE -le 1 ]]; then
 
 PKG_FILE="${PROFILES_DIR}/${FLAVOR}/packages.x86_64"
 if [[ ! -f "$PKG_FILE" ]]; then
@@ -97,10 +135,12 @@ arch-chroot "$WORKDIR" useradd -m -G wheel ender
 arch-chroot "$WORKDIR" sh -c "echo 'root:arch' | chpasswd"
 arch-chroot "$WORKDIR" sh -c "echo 'ender:arch' | chpasswd"
 
+fi
 # ==================================================================
 # Phase 1b: Copying overlay files
 # ==================================================================
 echo "==> Phase 1b: Copying overlay files"
+if [[ $START_PHASE -le 2 ]]; then
 
 OVERLAY_SRC="${OVERLAY_DIR}/common"
 if [[ -d "$OVERLAY_SRC" ]]; then
@@ -128,19 +168,23 @@ case "$FLAVOR" in
         ;;
 esac
 
+fi
 # ==================================================================
 # Phase 2: Creating squashfs
 # ==================================================================
 echo "==> Phase 2: Creating squashfs"
+if [[ $START_PHASE -le 2 ]]; then
 
 rm -f "$ROOTFS_SFS"
 echo "    Running mksquashfs (this may take a while)..."
 mksquashfs "$WORKDIR" "$ROOTFS_SFS" -comp zstd -Xcompression-level 15
 
+fi
 # ==================================================================
 # Phase 3: Building x86_64 initrds
 # ==================================================================
 echo "==> Phase 3: Building x86_64 initrds"
+if [[ $START_PHASE -le 3 ]]; then
 
 shopt -s nullglob
 PRESETS=( "${PROFILES_DIR}/${FLAVOR}/mkinitcpio-"*.conf )
@@ -245,10 +289,12 @@ for kpkg in ${KERNEL_X86_64}; do
     fi
 done
 
+fi
 # ==================================================================
 # Phase 4: Building ARM64 initrds (if available)
 # ==================================================================
 echo "==> Phase 4: Building ARM64 initrds (if available)"
+if [[ $START_PHASE -le 4 ]]; then
 
 if command -v qemu-aarch64-static &>/dev/null; then
     ARM_WORKDIR="${SCRIPT_DIR}/workdir-${FLAVOR}-arm"
@@ -377,10 +423,12 @@ else
     echo "    Skipping ARM64: qemu-aarch64-static not available on this host"
 fi
 
+fi
 # ==================================================================
 # Phase 5: Staging ISO files
 # ==================================================================
 echo "==> Phase 5: Staging ISO files"
+if [[ $START_PHASE -le 5 ]]; then
 
 # -- GRUB modules (copied from the host system) --
 if [[ -d "/usr/lib/grub" ]]; then
@@ -480,10 +528,12 @@ if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" ]]; then
     fi
 fi
 
+fi
 # ==================================================================
 # Phase 6: Generating ISO
 # ==================================================================
 echo "==> Phase 6: Generating ISO"
+if [[ $START_PHASE -le 6 ]]; then
 
 XORRISO_ARGS=(
     -as mkisofs
@@ -519,3 +569,5 @@ xorriso "${XORRISO_ARGS[@]}"
 
 echo ""
 echo "==> Done: ${OUT_DIR}/${ISONAME_FULL}.iso"
+
+fi
