@@ -525,19 +525,29 @@ ISOCFG
 fi
 
 # -- GRUB i386-pc BIOS boot fallback (if isolinux not available) --
-if [[ ! -f "${ISO_DIR}/isolinux/isolinux.bin" ]] && command -v grub-mkstandalone &>/dev/null; then
-    echo "    Building GRUB i386-pc BIOS boot image via grub-mkstandalone -O i386-pc-eltorito..."
+if [[ ! -f "${ISO_DIR}/isolinux/isolinux.bin" ]] && command -v grub-mkimage &>/dev/null; then
+    echo "    Building GRUB i386-pc BIOS boot image via grub-mkimage -O i386-pc-eltorito..."
     GRUB_BIOS_CD="${ISO_DIR}/boot/grub/i386-pc/eltorito.img"
-    # Use grub-mkstandalone -O i386-pc-eltorito which properly prepends cdboot.img
+    # Use grub-mkimage -O i386-pc-eltorito which properly prepends cdboot.img
     # and patches the core.img offset/size at bytes 0x10/0x14 so cdboot.img can
     # find and load core.img. Without this patch, the BIOS hangs after loading
-    # cdboot.img with "Missing OS" or a black screen.
-    # Use the already-processed grub.cfg from the ISO staging area (flavor already substituted).
-    grub-mkstandalone -O i386-pc-eltorito \
+    # cdboot.img with junk (zeroed offsets).
+    #
+    # IMPORTANT: Use grub-mkimage (NOT grub-mkstandalone) which includes ONLY
+    # the explicitly listed modules. grub-mkstandalone packs ALL modules into
+    # the core image, which exceeds the 480KB size limit (0x78000) for the
+    # i386-pc-eltorito format and fails silently.
+    #
+    # The -c embed.cfg early config searches for /boot/grub/grub.cfg on the ISO
+    # and loads it. The -p flag sets GRUB's prefix path for module loading.
+    grub-mkimage -O i386-pc-eltorito \
         -o "$GRUB_BIOS_CD" \
-        --modules="linux loopback iso9660 squash4 ext2 part_msdos part_gpt search search_fs_file normal configfile echo test true biosdisk" \
-        "boot/grub/grub.cfg=${ISO_DIR}/boot/grub/grub.cfg" 2>/dev/null || {
-        echo "    Warning: grub-mkstandalone failed for BIOS boot"
+        -p /boot/grub \
+        -c "${GRUB_DIR}/embed.cfg" \
+        linux loopback iso9660 squash4 ext2 part_msdos part_gpt \
+        search search_fs_file normal configfile echo test true \
+        biosdisk 2>/dev/null || {
+        echo "    Warning: grub-mkimage failed for BIOS boot"
         rm -f "$GRUB_BIOS_CD"
     }
     if [[ -f "$GRUB_BIOS_CD" ]]; then
@@ -619,12 +629,17 @@ fi
 
 # x86_64 UEFI boot entry
 if [[ -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
-    XORRISO_ARGS+=(-eltorito-alt-boot --efi-boot EFI/BOOT/efi.img -no-emul-boot)
+    # Use -e (not --efi-boot) so xorriso creates a hybrid MBR+GPT partition table.
+    # --efi-boot suppresses GPT creation entirely, leaving only bare El Torito
+    # which some UEFI firmware rejects. With -e, xorriso creates proper MBR
+    # partition entries (type 0xef) and matching GPT entries via
+    # -isohybrid-gpt-basdat, making the ISO detectable as a bootable device.
+    XORRISO_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/efi.img -no-emul-boot)
 fi
 
 # ARM64 UEFI boot entry (separate alt-boot if EFI image contains AA64)
 if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" && ! -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
-    XORRISO_ARGS+=(-eltorito-alt-boot --efi-boot EFI/BOOT/BOOTAA64.EFI -no-emul-boot)
+    XORRISO_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/BOOTAA64.EFI -no-emul-boot)
 fi
 
 XORRISO_ARGS+=(-isohybrid-gpt-basdat)
