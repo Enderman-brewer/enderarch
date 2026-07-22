@@ -524,6 +524,27 @@ ISOCFG
     echo "    Wrote default isolinux.cfg"
 fi
 
+# -- GRUB i386-pc BIOS boot fallback (if isolinux not available) --
+if [[ ! -f "${ISO_DIR}/isolinux/isolinux.bin" ]] && command -v grub-mkstandalone &>/dev/null; then
+    echo "    Building GRUB i386-pc BIOS boot image via grub-mkstandalone -O i386-pc-eltorito..."
+    GRUB_BIOS_CD="${ISO_DIR}/boot/grub/i386-pc/eltorito.img"
+    # Use grub-mkstandalone -O i386-pc-eltorito which properly prepends cdboot.img
+    # and patches the core.img offset/size at bytes 0x10/0x14 so cdboot.img can
+    # find and load core.img. Without this patch, the BIOS hangs after loading
+    # cdboot.img with "Missing OS" or a black screen.
+    # Use the already-processed grub.cfg from the ISO staging area (flavor already substituted).
+    grub-mkstandalone -O i386-pc-eltorito \
+        -o "$GRUB_BIOS_CD" \
+        --modules="linux loopback iso9660 squash4 ext2 part_msdos part_gpt search search_fs_file normal configfile echo test true biosdisk" \
+        "boot/grub/grub.cfg=${ISO_DIR}/boot/grub/grub.cfg" 2>/dev/null || {
+        echo "    Warning: grub-mkstandalone failed for BIOS boot"
+        rm -f "$GRUB_BIOS_CD"
+    }
+    if [[ -f "$GRUB_BIOS_CD" ]]; then
+        echo "    Created GRUB i386-pc eltorito boot image"
+    fi
+fi
+
 # -- Create an EFI boot partition image for UEFI hybrid boot --
 # This FAT image is referenced by xorriso's -e flag for the UEFI boot chain.
 if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" ]]; then
@@ -571,21 +592,39 @@ if [[ -f "${ISO_DIR}/isolinux/isolinux.bin" ]]; then
         -eltorito-catalog isolinux/boot.cat
         -no-emul-boot -boot-load-size 4 -boot-info-table
     )
+elif [[ -f "${ISO_DIR}/boot/grub/i386-pc/eltorito.img" ]]; then
+    echo "    Using GRUB i386-pc eltorito BIOS boot image"
+    XORRISO_ARGS+=(
+        -eltorito-boot boot/grub/i386-pc/eltorito.img
+        -no-emul-boot -boot-load-size 4 -boot-info-table
+    )
 fi
 
 # MBR for hybrid BIOS/UEFI boot
+MBR_SOURCE=""
 if [[ -f "/usr/lib/syslinux/bios/isohdpfx.bin" ]]; then
-    XORRISO_ARGS+=(-isohybrid-mbr /usr/lib/syslinux/bios/isohdpfx.bin)
+    MBR_SOURCE="/usr/lib/syslinux/bios/isohdpfx.bin"
+elif [[ -f "/usr/lib/grub/i386-pc/boot_hybrid.img" ]]; then
+    MBR_SOURCE="/usr/lib/grub/i386-pc/boot_hybrid.img"
+elif [[ -f "/usr/lib/grub/i386-pc/boot.img" ]]; then
+    MBR_SOURCE="/usr/lib/grub/i386-pc/boot.img"
+fi
+
+if [[ -n "$MBR_SOURCE" ]]; then
+    XORRISO_ARGS+=(-isohybrid-mbr "$MBR_SOURCE")
+    echo "    Using MBR: ${MBR_SOURCE}"
+else
+    echo "    Warning: No MBR source found; ISO will not have a partition table"
 fi
 
 # x86_64 UEFI boot entry
 if [[ -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
-    XORRISO_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/efi.img -no-emul-boot)
+    XORRISO_ARGS+=(-eltorito-alt-boot --efi-boot EFI/BOOT/efi.img -no-emul-boot)
 fi
 
 # ARM64 UEFI boot entry (separate alt-boot if EFI image contains AA64)
 if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" && ! -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
-    XORRISO_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/BOOTAA64.EFI -no-emul-boot)
+    XORRISO_ARGS+=(-eltorito-alt-boot --efi-boot EFI/BOOT/BOOTAA64.EFI -no-emul-boot)
 fi
 
 XORRISO_ARGS+=(-isohybrid-gpt-basdat)
