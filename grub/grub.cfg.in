@@ -1,7 +1,5 @@
 set default=0
 set timeout=30
-set gfxmode=auto
-set gfxpayload=keep
 
 # Detect architecture
 if [ ${grub_cpu} = x86_64 ]; then
@@ -24,8 +22,14 @@ if [ ${grub_cpu} = x86_64 ]; then
 fi
 
 # Probe the boot device
-search --no-floppy --set=root --label EARCH --set=isopart
-if [ -z "${isopart}" ]; then
+# First try to find the ISO by volume label.
+# NOTE: Only ONE --set per search command. GRUB rejects duplicate --set args
+# with "unexpected argument" errors.
+search --no-floppy --set=isopart --label EARCH
+if [ -n "${isopart}" ]; then
+  set root="${isopart}"
+else
+  # Fall back: find the device containing the squashfs
   search --no-floppy --set=root --file /LiveOS/rootfs.sfs
 fi
 
