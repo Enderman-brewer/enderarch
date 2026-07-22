@@ -479,6 +479,7 @@ elif command -v grub-mkstandalone &>/dev/null; then
     echo "    Building BOOTx64.EFI with grub-mkstandalone..."
     grub-mkstandalone -O x86_64-efi \
         -o "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" \
+        --modules="linux loopback iso9660 squash4 ext2 part_msdos part_gpt search search_fs_file normal configfile echo test true" \
         "boot/grub/grub.cfg=${GRUB_DIR}/grub.cfg" 2>/dev/null || true
     if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" ]]; then
         echo "    Built BOOTx64.EFI"
@@ -493,6 +494,7 @@ elif command -v grub-mkstandalone &>/dev/null; then
     echo "    Building BOOTAA64.EFI with grub-mkstandalone..."
     grub-mkstandalone -O arm64-efi \
         -o "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" \
+        --modules="linux loopback iso9660 squash4 ext2 part_msdos part_gpt search search_fs_file normal configfile echo test true" \
         "boot/grub/grub.cfg=${GRUB_DIR}/grub.cfg" 2>/dev/null || true
     if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" ]]; then
         echo "    Built BOOTAA64.EFI"
