@@ -3,6 +3,25 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# --- Cleanup trap ---
+# Track temp mount points and loop devices so we can clean up on exit
+_MNT_DIRS=()
+cleanup() {
+    local dir
+    for dir in "${_MNT_DIRS[@]}"; do
+        if mountpoint -q "$dir" 2>/dev/null; then
+            echo "==> Cleanup: unmounting $dir"
+            umount "$dir" 2>/dev/null || true
+        fi
+        [[ -d "$dir" ]] && rmdir "$dir" 2>/dev/null || true
+    done
+    # Detach any remaining loop devices backed by our ISO dir
+    for loop in $(losetup -l -n -O NAME,BACK-FILE 2>/dev/null | grep "$SCRIPT_DIR/iso" | awk '{print $1}'); do
+        losetup -d "$loop" 2>/dev/null || true
+    done
+}
+trap cleanup EXIT INT TERM
+
 # --- Argument parsing ---
 FLAVOR=""
 START_PHASE=1
@@ -516,6 +535,7 @@ if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" ]]; then
     if [[ -f "$EFI_IMG" ]]; then
         # Mount, copy EFI directory, unmount
         MNT=$(mktemp -d)
+        _MNT_DIRS+=("$MNT")  # register with cleanup trap
         mount "$EFI_IMG" "$MNT"
         mkdir -p "$MNT/EFI/BOOT"
         cp "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" "$MNT/EFI/BOOT/"
