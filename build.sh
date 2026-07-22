@@ -5,15 +5,15 @@ FLAVOR="${1:?Usage: $0 <flavor>}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 # ------------------------------------------------------------------
-# Source shared configuration from config.mk.
-# config.mk uses Makefile syntax; we handle make-specific constructs
-# (hyphenated var names, $(CURDIR), $(shell ...)) gracefully here.
+# Build configuration (mirrors config.mk for Make compatibility)
 # ------------------------------------------------------------------
-set +e
-source "${SCRIPT_DIR}/config.mk" 2>/dev/null
-set -e
+KERNEL_X86_64="linux linux-lts"
+KERNEL_ARM64="linux-aarch64 linux-lts-aarch64"
 
-# Override / define variables that Make expands but bash cannot
+INITRD_COMMON="initramfs-common.img"
+INITRD_ENDERARCH="initramfs-enderarch.img"
+INITRD_ENDERLOADER="initramfs-enderloader.img"
+
 CURDIR="${SCRIPT_DIR}"
 ISO_DIR="${SCRIPT_DIR}/iso"
 OUT_DIR="${SCRIPT_DIR}/out"
