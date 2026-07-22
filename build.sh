@@ -527,7 +527,7 @@ fi
 if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" ]]; then
     echo "    Creating EFI boot partition image..."
     EFI_IMG="${ISO_DIR}/EFI/BOOT/efi.img"
-    dd if=/dev/zero of="$EFI_IMG" bs=1M count=10 2>/dev/null
+    dd if=/dev/zero of="$EFI_IMG" bs=1M count=32 2>/dev/null
     mkfs.fat -F32 "$EFI_IMG" 2>/dev/null || {
         echo "    Warning: mkfs.fat not available; EFI boot image not created"
         rm -f "$EFI_IMG"
