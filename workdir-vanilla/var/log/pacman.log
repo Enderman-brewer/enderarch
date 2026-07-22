@@ -1,0 +1,2 @@
+[2026-07-23T08:12:57+1000] [PACMAN] Running 'pacman -b /home/zack/enderarch/workdir-vanilla//var/lib/pacman/ -r /home/zack/enderarch/workdir-vanilla -Sy --config=/tmp/pacman.conf.3bGz --disable-sandbox --noconfirm base linux linux-lts linux-firmware sudo grub efibootmgr openssh vim man-db networkmanager tmux fdisk parted arch-install-scripts ntfs-3g btrfs-progs dosfstools e2fsprogs htop linux linux-lts'
+[2026-07-23T08:12:57+1000] [PACMAN] synchronizing package lists
