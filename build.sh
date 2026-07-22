@@ -150,8 +150,12 @@ if [[ ${#PRESETS[@]} -eq 0 ]]; then
     echo "    Warning: No mkinitcpio preset files found in profiles/${FLAVOR}/"
     echo "    Skipping initrd builds."
 else
-    # Stage common init scripts into workdir (shared by all initrd types)
-    # These also end up in the squashfs — that's fine, they're tiny helpers
+    # Copy custom hooks into workdir so mkinitcpio can find them in-chroot
+    mkdir -p "${WORKDIR}/usr/lib/initcpio/install" "${WORKDIR}/usr/lib/initcpio/hooks"
+    cp "${MKINITCPIO_DIR}/install/"* "${WORKDIR}/usr/lib/initcpio/install/"
+    cp "${MKINITCPIO_DIR}/hooks/"* "${WORKDIR}/usr/lib/initcpio/hooks/"
+
+    # Stage common init scripts into workdir
     echo "    Staging init scripts into workdir..."
     mkdir -p "${WORKDIR}/lib/enderarch" \
              "${WORKDIR}/mnt/enderarch/cow/work" \
@@ -180,6 +184,9 @@ else
 
         output_path="${ISO_DIR}/boot/x86_64/${output_name}"
 
+        # Copy preset into workdir for in-chroot mkinitcpio
+        cp "$preset" "${WORKDIR}/etc/${base}"
+
         # Swap init-mode for this initrd type
         rm -f "${WORKDIR}/lib/enderarch/init-mode"
         case "$name" in
@@ -188,7 +195,6 @@ else
                 ;;
             enderarch)
                 cp "${SCRIPTS_DIR}/init-enderarch" "${WORKDIR}/lib/enderarch/init-mode"
-                # Enderarch initrd is self-contained — no external docs needed
                 ;;
             enderloader)
                 cp "${SCRIPTS_DIR}/init-enderloader" "${WORKDIR}/lib/enderarch/init-mode"
@@ -199,7 +205,19 @@ else
         esac
 
         echo "    Building initrd: ${output_name}"
-        mkinitcpio -c "$preset" -g "$output_path" -b "$WORKDIR"
+        # Run mkinitcpio inside the chroot so it finds modules + binaries
+        arch-chroot "$WORKDIR" /usr/bin/mkinitcpio -c "/etc/${base}" -g "/boot/${output_name}" 2>&1 || {
+            echo "    ERROR: initrd build for ${name} failed!"
+            exit 1
+        }
+        # Copy result from chroot's /boot to ISO staging
+        if [[ -f "${WORKDIR}/boot/${output_name}" ]]; then
+            cp "${WORKDIR}/boot/${output_name}" "$output_path"
+            echo "    Copied ${output_name} to ISO staging"
+        else
+            echo "    ERROR: ${output_name} not found in chroot /boot/"
+            exit 1
+        fi
     done
 fi
 
