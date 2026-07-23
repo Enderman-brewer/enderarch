@@ -7,6 +7,9 @@ mount -t sysfs none /sys
 mount -t devtmpfs none /dev
 mount -t tmpfs none /run
 
+# Source verbose failure handler (sleeps infinity on fatal errors)
+. /lib/enderarch/enderarch-fail
+
 # Create essential directories
 mkdir -p /lib/enderarch /mnt /newroot /proc /sys /dev /run /tmp
 
@@ -61,6 +64,5 @@ if [ -f /lib/enderarch/init-mode ]; then
     . /lib/enderarch/init-mode
 else
     echo "ENDERARCH: ERROR — no /lib/enderarch/init-mode found!"
-    echo "ENDERARCH: Dropping to emergency shell"
-    exec sh
+    fail "No init-mode file at /lib/enderarch/init-mode — cannot boot"
 fi

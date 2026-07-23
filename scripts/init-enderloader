@@ -54,8 +54,7 @@ done
 
 if [ "$PART_COUNT" -eq 0 ]; then
     echo "ENDERLOADER: No partitions found!"
-    echo "ENDERLOADER: Dropping to shell"
-    exec sh
+    fail "enderarch-scan found no partitions — no block devices detected"
 fi
 
 # Show results and prompt
@@ -101,7 +100,7 @@ done
 
 if [ -z "$SELECTED" ]; then
     echo "ENDERLOADER: Invalid choice!"
-    exec sh
+    fail "Partition selection '${CHOICE}' did not match any device"
 fi
 
 echo ""
@@ -112,8 +111,8 @@ mount "$SELECTED" /newroot 2>/dev/null || {
     echo "Available filesystems: ext4 btrfs xfs ntfs3 vfat"
     printf "Filesystem: "; read -r FSTYPE
     mount -t "$FSTYPE" "$SELECTED" /newroot 2>/dev/null || {
-        echo "ENDERLOADER: Mount failed! Dropping to shell."
-        exec sh
+        echo "ENDERLOADER: Mount failed even with manual fs type."
+        fail "Could not mount ${SELECTED} — unsupported or corrupted filesystem"
     }
 }
 

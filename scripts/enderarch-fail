@@ -1,0 +1,52 @@
+#!/bin/sh
+# enderarch-fail — Verbose failure handler for initrd scripts
+# Source this from /init and other initrd scripts. Call fail() on fatal errors.
+# Displays full system state and sleeps forever so the user can inspect the VM.
+
+fail() {
+    local msg="$*"
+    echo ""
+    echo "=============================================="
+    echo "  ███████ ENDERARCH: FATAL ERROR ███████"
+    echo "=============================================="
+    echo "  Message:  ${msg:-"(no message)"}"
+    echo "  Timestamp: $(date 2>/dev/null || echo 'N/A')"
+    echo "  Kernel:    $(uname -a 2>/dev/null || echo 'N/A')"
+    echo "  Hostname:  $(cat /proc/sys/kernel/hostname 2>/dev/null || echo 'N/A')"
+    echo ""
+    echo "--- Kernel command line ---"
+    cat /proc/cmdline 2>/dev/null || echo "(unreadable)"
+    echo ""
+    echo "--- Mounted filesystems ---"
+    mount 2>/dev/null | head -30 || echo "(unreadable)"
+    echo ""
+    echo "--- Block devices (partitions) ---"
+    cat /proc/partitions 2>/dev/null | head -30 || echo "(unreadable)"
+    echo ""
+    echo "--- Device tree (top-level) ---"
+    ls -la /dev/sd* /dev/nvme* /dev/mmcblk* /dev/vd* /dev/sr* 2>/dev/null || echo "(none found)"
+    echo ""
+    echo "--- Loaded kernel modules ---"
+    cat /proc/modules 2>/dev/null | head -30 || echo "(unreadable)"
+    echo ""
+    echo "--- Recent kernel messages (dmesg) ---"
+    dmesg 2>/dev/null | tail -40 || echo "(unreadable)"
+    echo ""
+    if [ -d /lib/enderarch ]; then
+        echo "--- Enderarch init files ---"
+        ls -la /lib/enderarch/ 2>/dev/null
+        echo ""
+    fi
+    echo "=============================================="
+    echo "  Sleeping indefinitely. Inspect the above"
+    echo "  diagnostic output to find the root cause."
+    echo ""
+    echo "  To reboot:  echo b > /proc/sysrq-trigger"
+    echo "  To poweroff: echo o > /proc/sysrq-trigger"
+    echo "  To shell (if available):  exec sh"
+    echo "=============================================="
+    echo ""
+
+    # Sleep "infinity" — try common variants
+    sleep 99999999 2>/dev/null || sleep inf 2>/dev/null || while :; do sleep 86400; done
+}

@@ -228,6 +228,7 @@ else
     cp "${SCRIPTS_DIR}/find-squashfs" "${WORKDIR}/lib/enderarch/"
     cp "${SCRIPTS_DIR}/setup-overlay" "${WORKDIR}/lib/enderarch/"
     cp "${SCRIPTS_DIR}/enderarch-scan" "${WORKDIR}/lib/enderarch/"
+    cp "${SCRIPTS_DIR}/enderarch-fail" "${WORKDIR}/lib/enderarch/"
     # Register x86_64 emulator for ARM boot (if available)
     cp "/usr/bin/qemu-x86_64-static" "${WORKDIR}/usr/bin/" 2>/dev/null || true
 
@@ -360,6 +361,7 @@ if command -v qemu-aarch64-static &>/dev/null; then
         cp "${SCRIPTS_DIR}/setup-binfmt" "${ARM_WORKDIR}/lib/enderarch/"
         cp "${SCRIPTS_DIR}/find-squashfs" "${ARM_WORKDIR}/lib/enderarch/"
         cp "${SCRIPTS_DIR}/enderarch-scan" "${ARM_WORKDIR}/lib/enderarch/"
+        cp "${SCRIPTS_DIR}/enderarch-fail" "${ARM_WORKDIR}/lib/enderarch/"
         # Register x86_64 emulator for ARM boot
         cp "/usr/bin/qemu-x86_64-static" "${ARM_WORKDIR}/usr/bin/" 2>/dev/null || true
 

@@ -26,8 +26,8 @@ done
 
 if [ -z "$SFS_PATH" ]; then
     echo "ENDERARCH: ERROR — Could not find rootfs.sfs!"
-    echo "ENDERARCH: Try manually: mount /dev/sr0 /mnt/iso && ls /mnt/iso/LiveOS/"
-    exec sh
+    echo "ENDERARCH: Tried all block devices. See diagnostic below."
+    fail "rootfs.sfs not found — ISO missing LiveOS/rootfs.sfs or wrong device"
 fi
 
 # Mount squashfs
