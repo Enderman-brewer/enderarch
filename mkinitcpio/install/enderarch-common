@@ -15,7 +15,20 @@ build() {
     done
     
     # Binaries are provided by the 'base' hook and other standard hooks.
-    # This hook ONLY handles the kernel module unification.
+    # This hook also installs the custom /init dispatcher and failure handler:
+    # because this hook runs AFTER 'base' in HOOKS order, add_file overrides
+    # the stock init that 'base' installed.
+    add_file /init /init 755
+    add_file /lib/enderarch/enderarch-fail /lib/enderarch/enderarch-fail 755
+
+    # On ARM64 builds the chroot carries an aarch64-built qemu-x86_64-static
+    # (from the qemu-user-static-bin package). Include it so the ARM kernel
+    # can exec x86_64 binaries from the rootfs after switch_root. On x86_64
+    # builds the file is absent and this is skipped.
+    if [ -f /usr/bin/qemu-x86_64-static ]; then
+        add_file /usr/bin/qemu-x86_64-static /usr/bin/qemu-x86_64-static 755
+    fi
+
     add_runscript
 }
 

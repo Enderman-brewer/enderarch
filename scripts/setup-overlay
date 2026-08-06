@@ -4,7 +4,7 @@
 # Mode determined by kernel cmdline
 
 LOWER="$1"; UPPER="$2"; WORK="$3"; MERGED="$4"
-[ -n "$LOWER" ] || { echo "Usage: setup-overlay <lower> <upper> <work> <merged>"; exit 1; }
+[ -n "$LOWER" ] && [ -n "$UPPER" ] && [ -n "$WORK" ] && [ -n "$MERGED" ] || { echo "Usage: setup-overlay <lower> <upper> <work> <merged>"; exit 1; }
 
 mkdir -p "$UPPER" "$WORK" "$MERGED"
 mount -t overlay overlay -o lowerdir="$LOWER",upperdir="$UPPER",workdir="$WORK" "$MERGED" 2>/dev/null || {

@@ -3,7 +3,7 @@
 # Returns path to rootfs.sfs or exits with error
 
 SFS_PATH=""
-for dev in /dev/sr0 /dev/sr1 /dev/disk/by-label/EARCH* /dev/disk/by-uuid/*; do
+for dev in /dev/sr0 /dev/sr1 /dev/disk/by-label/ENDERARCH* /dev/disk/by-uuid/*; do
     [ -b "$dev" ] || continue
     mount -t iso9660 -o ro "$dev" /mnt/iso 2>/dev/null || continue
     if [ -f /mnt/iso/LiveOS/rootfs.sfs ]; then

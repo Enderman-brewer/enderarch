@@ -7,9 +7,14 @@ echo "  Enderloader — System Recovery Environment"
 echo "============================================"
 echo ""
 
+# Re-source the failure handler: the rescan path re-execs this script in a
+# fresh shell, which does not inherit functions from /init.
+. /lib/enderarch/enderarch-fail 2>/dev/null || true
+
 # Scan all block devices
 echo "ENDERLOADER: Scanning block devices..."
 RESULTS=""
+PARTS=""
 PART_COUNT=0
 
 # Gather partition info
@@ -20,6 +25,7 @@ for part in $(ls /dev/sd*[0-9] /dev/nvme*n*p* /dev/mmcblk*p* 2>/dev/null | sort 
     mkdir -p "/mnt/mountpoint-${PART_ID}"
     if mount -o ro "$part" "/mnt/mountpoint-${PART_ID}" 2>/dev/null; then
         PART_COUNT=$((PART_COUNT + 1))
+        PARTS="${PARTS}${part}\n"
         
         # Collect info
         HAS_LINUX="no"; HAS_BOOTLOADER="no"; HAS_FSTAB="no"; HAS_OSRELEASE=""
@@ -54,7 +60,7 @@ done
 
 if [ "$PART_COUNT" -eq 0 ]; then
     echo "ENDERLOADER: No partitions found!"
-    fail "enderarch-scan found no partitions — no block devices detected"
+    fail "No partitions found — no block devices detected"
 fi
 
 # Show results and prompt
@@ -86,13 +92,12 @@ case "$CHOICE" in
         ;;
 esac
 
-# Find the selected partition
+# Find the selected partition — index into the same list that was displayed
 SELECTED=""
-IDX=0
-for part in $(ls /dev/sd*[0-9] /dev/nvme*n*p* /dev/mmcblk*p* 2>/dev/null | sort || true); do
-    [ -b "$part" ] || continue
-    IDX=$((IDX + 1))
-    if [ "$IDX" = "$CHOICE" ]; then
+i=0
+for part in $(printf "%b" "$PARTS"); do
+    i=$((i + 1))
+    if [ "$i" = "$CHOICE" ]; then
         SELECTED="$part"
         break
     fi

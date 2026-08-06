@@ -12,7 +12,7 @@ echo "ENDERARCH: Mode = $MODE"
 
 # Find the squashfs
 SFS_PATH=""
-for dev in /dev/sr0 /dev/sr1 /dev/disk/by-label/EARCH* /dev/disk/by-uuid/*; do
+for dev in /dev/sr0 /dev/sr1 /dev/disk/by-label/ENDERARCH* /dev/disk/by-uuid/*; do
     [ -b "$dev" ] || continue
     mkdir -p /mnt/iso
     mount -t iso9660 -o ro "$dev" /mnt/iso 2>/dev/null || continue
@@ -24,6 +24,21 @@ for dev in /dev/sr0 /dev/sr1 /dev/disk/by-label/EARCH* /dev/disk/by-uuid/*; do
     umount /mnt/iso 2>/dev/null || true
 done
 
+# Fallback: probe every block device (handles non-iso9660 USB layouts)
+if [ -z "$SFS_PATH" ]; then
+    mkdir -p /mnt/iso
+    for dev in $(ls /dev/sd* /dev/nvme* /dev/mmcblk* 2>/dev/null | sort -u || true); do
+        [ -b "$dev" ] || continue
+        mount -o ro "$dev" /mnt/iso 2>/dev/null || continue
+        if [ -f /mnt/iso/LiveOS/rootfs.sfs ]; then
+            SFS_PATH="/mnt/iso/LiveOS/rootfs.sfs"
+            echo "ENDERARCH: Found rootfs.sfs on $dev (fallback)"
+            break
+        fi
+        umount /mnt/iso 2>/dev/null || true
+    done
+fi
+
 if [ -z "$SFS_PATH" ]; then
     echo "ENDERARCH: ERROR — Could not find rootfs.sfs!"
     echo "ENDERARCH: Tried all block devices. See diagnostic below."
@@ -32,22 +47,26 @@ fi
 
 # Mount squashfs
 mkdir -p /mnt/squashfs
-mount -t squashfs -o ro,loop "$SFS_PATH" /mnt/squashfs
+mount -t squashfs -o ro,loop "$SFS_PATH" /mnt/squashfs || fail "Could not mount rootfs.sfs ($SFS_PATH) — squashfs module missing?"
 
-# Prepare overlay
+# Prepare overlay — COW storage on a dedicated tmpfs (ramfs lacks d_type,
+# which overlayfs requires for the upper filesystem)
+mkdir -p /mnt/enderarch/cow
+mount -t tmpfs -o size=50% tmpfs /mnt/enderarch/cow || fail "Could not mount COW tmpfs at /mnt/enderarch/cow"
 mkdir -p /mnt/enderarch/cow/work /mnt/enderarch/cow/upper
 mkdir -p /newroot
 
 if [ "$MODE" = "ram" ]; then
     echo "ENDERARCH: RAM mode — copying rootfs to tmpfs (USB can be removed after)..."
-    mount -t tmpfs -o size=100% tmpfs /mnt/tmpfs
+    mkdir -p /mnt/tmpfs
+    mount -t tmpfs -o size=90% tmpfs /mnt/tmpfs || fail "Could not mount tmpfs for RAM mode"
     echo "    Copying files... this may take a minute."
-    cp -a /mnt/squashfs/. /mnt/tmpfs/
+    cp -a /mnt/squashfs/. /mnt/tmpfs/ || fail "RAM copy failed — not enough memory for the rootfs"
     # Create writable overlay on top of the tmpfs copy
-    mount -t overlay overlay -o lowerdir=/mnt/tmpfs,upperdir=/mnt/enderarch/cow/upper,workdir=/mnt/enderarch/cow/work /newroot
+    mount -t overlay overlay -o lowerdir=/mnt/tmpfs,upperdir=/mnt/enderarch/cow/upper,workdir=/mnt/enderarch/cow/work /newroot || fail "Overlay mount failed (RAM mode)"
 else
     echo "ENDERARCH: USB COW mode — reading from USB, writes to tmpfs"
-    mount -t overlay overlay -o lowerdir=/mnt/squashfs,upperdir=/mnt/enderarch/cow/upper,workdir=/mnt/enderarch/cow/work /newroot
+    mount -t overlay overlay -o lowerdir=/mnt/squashfs,upperdir=/mnt/enderarch/cow/upper,workdir=/mnt/enderarch/cow/work /newroot || fail "Overlay mount failed (COW mode)"
 fi
 
 echo "ENDERARCH: switch_root to live environment"
