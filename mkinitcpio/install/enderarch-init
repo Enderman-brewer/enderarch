@@ -1,6 +1,12 @@
 # install/enderarch-init — Enderarch live boot initrd
 
 build() {
+    # This image is unpacked AFTER the common image at boot, so its stock
+    # 'base' /init would otherwise override the custom /init. Re-install the
+    # custom /init (and the failure handler) here as well.
+    add_file /init /init 755
+    add_file /lib/enderarch/enderarch-fail /lib/enderarch/enderarch-fail 755
+
     # Add the init-mode script
     add_file /lib/enderarch/init-mode /lib/enderarch/init-mode
     

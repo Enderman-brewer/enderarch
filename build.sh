@@ -229,8 +229,10 @@ else
     cp "${SCRIPTS_DIR}/setup-overlay" "${WORKDIR}/lib/enderarch/"
     cp "${SCRIPTS_DIR}/enderarch-scan" "${WORKDIR}/lib/enderarch/"
     cp "${SCRIPTS_DIR}/enderarch-fail" "${WORKDIR}/lib/enderarch/"
-    # Register x86_64 emulator for ARM boot (if available)
-    cp "/usr/bin/qemu-x86_64-static" "${WORKDIR}/usr/bin/" 2>/dev/null || true
+    # NOTE: qemu-x86_64-static is intentionally NOT staged into the x86_64
+    # chroot. The emulator is only needed for ARM64 boots, and the
+    # enderarch-common install hook adds it to the initrd from the ARM
+    # chroot's qemu-user-static-bin package (aarch64 build).
 
     # Detect installed kernel versions in workdir for -k flag
     KERNEL_VERSIONS=( $(ls "${WORKDIR}/usr/lib/modules/" 2>/dev/null | sort -V) )
@@ -340,12 +342,15 @@ if command -v qemu-aarch64-static &>/dev/null; then
             ARM_PACKAGES+=("$kpkg")
         done
 
-        echo "    Installing ARM64 packages: ${ARM_PACKAGES[*]}"
-        pacstrap -c -G -M "$ARM_WORKDIR" "${ARM_PACKAGES[@]}" < /dev/null
-
-        # Register qemu-aarch64-static in the chroot so arch-chroot works
+        # Register qemu-aarch64-static in the chroot BEFORE pacstrap so that
+        # package post-install scriptlets can run chrooted under emulation.
+        # (pacstrap -c only uses the host package cache; it does not wipe the
+        # target directory.)
         mkdir -p "$ARM_WORKDIR/usr/bin"
         cp "$(command -v qemu-aarch64-static)" "$ARM_WORKDIR/usr/bin/"
+
+        echo "    Installing ARM64 packages: ${ARM_PACKAGES[*]}"
+        pacstrap -c -G -M "$ARM_WORKDIR" "${ARM_PACKAGES[@]}" < /dev/null
 
         # Copy mkinitcpio configs and hooks into the ARM chroot
         mkdir -p "${ARM_WORKDIR}/etc/mkinitcpio.d" \
@@ -362,8 +367,13 @@ if command -v qemu-aarch64-static &>/dev/null; then
         cp "${SCRIPTS_DIR}/find-squashfs" "${ARM_WORKDIR}/lib/enderarch/"
         cp "${SCRIPTS_DIR}/enderarch-scan" "${ARM_WORKDIR}/lib/enderarch/"
         cp "${SCRIPTS_DIR}/enderarch-fail" "${ARM_WORKDIR}/lib/enderarch/"
-        # Register x86_64 emulator for ARM boot
-        cp "/usr/bin/qemu-x86_64-static" "${ARM_WORKDIR}/usr/bin/" 2>/dev/null || true
+        # The aarch64-built qemu-x86_64-static is provided inside the ARM
+        # chroot by the qemu-user-static-bin package. Do NOT copy the host's
+        # x86_64 build here — it would clobber the aarch64 binary. The
+        # enderarch-common install hook adds it to the ARM initrd.
+        if [[ ! -f "${ARM_WORKDIR}/usr/bin/qemu-x86_64-static" ]]; then
+            echo "    Warning: qemu-x86_64-static not found in ARM chroot; x86_64 emulation will be unavailable on ARM boot"
+        fi
 
         # Detect ARM kernel version for -k flag
         ARM_KERNEL_VERSIONS=( $(ls "${ARM_WORKDIR}/usr/lib/modules/" 2>/dev/null | sort -V) )
@@ -406,6 +416,7 @@ if command -v qemu-aarch64-static &>/dev/null; then
                     enderloader)
                         cp "${SCRIPTS_DIR}/init-enderloader" "${ARM_WORKDIR}/lib/enderarch/init-mode"
                         cp "${SCRIPTS_DIR}/enderarch-scan" "${ARM_WORKDIR}/lib/enderarch/"
+                        cp "${SCRIPTS_DIR}/88-enderloader.sh" "${ARM_WORKDIR}/etc/profile.d/" 2>/dev/null || true
                         cp -a "${OVERLAY_DIR}/enderloader/mnt/enderloader/." \
                            "${ARM_WORKDIR}/mnt/enderloader/" 2>/dev/null || true
                         ;;
@@ -475,16 +486,18 @@ fi
 # -- EFI boot executables (standalone GRUB images) --
 # x86_64
 if [[ -f "/usr/lib/grub/x86_64-efi/grub.efi" ]]; then
-    cp "/usr/lib/grub/x86_64-efi/grub.efi" "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI"
-    echo "    Copied BOOTx64.EFI"
+    cp "/usr/lib/grub/x86_64-efi/grub.efi" "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI"
+    echo "    Copied BOOTX64.EFI"
 elif command -v grub-mkstandalone &>/dev/null; then
-    echo "    Building BOOTx64.EFI with grub-mkstandalone..."
-    grub-mkstandalone -O x86_64-efi \
-        -o "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" \
+    echo "    Building BOOTX64.EFI with grub-mkstandalone..."
+    if grub-mkstandalone -O x86_64-efi \
+        -o "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" \
         --modules="linux loopback iso9660 squash4 ext2 part_msdos part_gpt search search_fs_file normal configfile echo test true" \
-        "boot/grub/grub.cfg=${GRUB_DIR}/grub.cfg" 2>/dev/null || true
-    if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" ]]; then
-        echo "    Built BOOTx64.EFI"
+        "boot/grub/grub.cfg=${GRUB_CFG_DST}" 2>/dev/null; then
+        echo "    Built BOOTX64.EFI"
+    else
+        echo "    Warning: grub-mkstandalone failed to build BOOTX64.EFI"
+        rm -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI"
     fi
 fi
 
@@ -494,12 +507,14 @@ if [[ -f "/usr/lib/grub/arm64-efi/grub.efi" ]]; then
     echo "    Copied BOOTAA64.EFI"
 elif command -v grub-mkstandalone &>/dev/null; then
     echo "    Building BOOTAA64.EFI with grub-mkstandalone..."
-    grub-mkstandalone -O arm64-efi \
+    if grub-mkstandalone -O arm64-efi \
         -o "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" \
         --modules="linux loopback iso9660 squash4 ext2 part_msdos part_gpt search search_fs_file normal configfile echo test true" \
-        "boot/grub/grub.cfg=${GRUB_DIR}/grub.cfg" 2>/dev/null || true
-    if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" ]]; then
+        "boot/grub/grub.cfg=${GRUB_CFG_DST}" 2>/dev/null; then
         echo "    Built BOOTAA64.EFI"
+    else
+        echo "    Warning: grub-mkstandalone failed to build BOOTAA64.EFI"
+        rm -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI"
     fi
 fi
 
@@ -514,14 +529,20 @@ if [[ -d "/usr/lib/syslinux/bios" ]]; then
     done
 fi
 
+# Use the repo's isolinux.cfg (it references both initramfs images)
+if [[ -f "${GRUB_DIR}/isolinux.cfg" && -f "${ISO_DIR}/isolinux/isolinux.bin" ]]; then
+    cp "${GRUB_DIR}/isolinux.cfg" "${ISO_DIR}/isolinux/isolinux.cfg"
+    echo "    Copied isolinux.cfg"
+fi
+
 # Write a minimal isolinux.cfg if none exists
 if [[ ! -f "${ISO_DIR}/isolinux/isolinux.cfg" ]]; then
-    cat > "${ISO_DIR}/isolinux/isolinux.cfg" << 'ISOCFG'
+    cat > "${ISO_DIR}/isolinux/isolinux.cfg" << ISOCFG
 DEFAULT enderarch
 LABEL enderarch
     LINUX ../boot/x86_64/vmlinuz-linux
-    INITRD ../boot/x86_64/initramfs-enderarch.img
-    APPEND root=live:LABEL=ENDERARCH quiet splash
+    INITRD ../boot/x86_64/initramfs-common.img,../boot/x86_64/initramfs-enderarch.img
+    APPEND root=live:LABEL=ENDERARCH_${FLAVOR} quiet splash
 ISOCFG
     echo "    Wrote default isolinux.cfg"
 fi
@@ -559,7 +580,7 @@ fi
 
 # -- Create an EFI boot partition image for UEFI hybrid boot --
 # This FAT image is referenced by xorriso's -e flag for the UEFI boot chain.
-if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" ]]; then
+if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" ]]; then
     echo "    Creating EFI boot partition image..."
     EFI_IMG="${ISO_DIR}/EFI/BOOT/efi.img"
     dd if=/dev/zero of="$EFI_IMG" bs=1M count=32 2>/dev/null
@@ -571,15 +592,21 @@ if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" ]]; then
         # Mount, copy EFI directory, unmount
         MNT=$(mktemp -d)
         _MNT_DIRS+=("$MNT")  # register with cleanup trap
-        mount "$EFI_IMG" "$MNT"
-        mkdir -p "$MNT/EFI/BOOT"
-        cp "${ISO_DIR}/EFI/BOOT/BOOTx64.EFI" "$MNT/EFI/BOOT/"
-        if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" ]]; then
-            cp "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" "$MNT/EFI/BOOT/"
+        if mount "$EFI_IMG" "$MNT" 2>/dev/null; then
+            mkdir -p "$MNT/EFI/BOOT"
+            cp "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" "$MNT/EFI/BOOT/"
+            if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" ]]; then
+                cp "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" "$MNT/EFI/BOOT/"
+            fi
+            umount "$MNT"
+            rmdir "$MNT"
+            echo "    EFI boot partition image created: ${EFI_IMG}"
+        else
+            echo "    Warning: could not mount EFI image; EFI boot partition image not created"
+            umount "$MNT" 2>/dev/null || true
+            rmdir "$MNT" 2>/dev/null || true
+            rm -f "$EFI_IMG"
         fi
-        umount "$MNT"
-        rmdir "$MNT"
-        echo "    EFI boot partition image created: ${EFI_IMG}"
     fi
 fi
 
