@@ -37,8 +37,8 @@ jobs:
         run: |
           make kgui
 
-      - name: Upload ISO artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload ISO to Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
         with:
-          name: enderarch-kgui-${{ github.sha }}
-          path: out/*.iso
+          files: out/*.iso
