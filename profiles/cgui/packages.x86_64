@@ -1,4 +1,4 @@
-# Enderarch KGUI — x86_64 packages
+# Enderarch CGOI — Cinnamon GUI ISO — x86_64 packages
 # Base system
 base
 linux
@@ -21,14 +21,9 @@ btrfs-progs
 dosfstools
 e2fsprogs
 # Desktop
-plasma-meta
-plasma-workspace
-breeze
-breeze-gtk
-kde-gtk-config
-sddm
-konsole
-dolphin
-kate
+cinnamon
+cinnamon-gtk-theme
+lightdm
+lightdm-gtk-greeter
 firefox
 htop

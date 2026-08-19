@@ -35,7 +35,7 @@ while [[ $# -gt 0 ]]; do
         -h|--help)
             echo "Usage: $0 <flavor> [--from-phase N]"
             echo ""
-            echo "  flavor:     vanilla | kgui | mingui"
+            echo "  flavor:     vanilla | mingui | cgui"
             echo "  --from-phase N  Start from phase N (1-6):"
             echo "    1 = pacstrap + users (slow, requires network)"
             echo "    2 = overlay + squashfs"
@@ -177,9 +177,9 @@ fi
 echo "    Enabling systemd services..."
 arch-chroot "$WORKDIR" systemctl enable NetworkManager.service 2>/dev/null || true
 case "$FLAVOR" in
-    kgui)
-        arch-chroot "$WORKDIR" systemctl enable sddm.service 2>/dev/null || true
-        echo "    SDDM enabled for KGUI"
+    cgui)
+        arch-chroot "$WORKDIR" systemctl enable lightdm.service 2>/dev/null || true
+        echo "    LightDM enabled for CGUI"
         ;;
     mingui)
         arch-chroot "$WORKDIR" systemctl enable lightdm.service 2>/dev/null || true

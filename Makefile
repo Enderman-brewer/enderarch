@@ -1,6 +1,6 @@
 include config.mk
 
-FLAVORS := vanilla kgui mingui
+FLAVORS := vanilla mingui cgui
 
 .PHONY: all $(FLAVORS) clean
 
@@ -21,7 +21,7 @@ help:
 	@echo "Flavors: $(FLAVORS)"
 	@echo ""
 	@echo "make vanilla     - Build vanilla (CLI) ISO"
-	@echo "make kgui        - Build KGUI (KDE) ISO"
 	@echo "make mingui      - Build MinGUI (Openbox) ISO"
+	@echo "make cgui        - Build CGUI (Cinnamon) ISO"
 	@echo "make all         - Build all flavors"
 	@echo "make clean       - Clean build artifacts"

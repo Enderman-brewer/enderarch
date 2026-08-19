@@ -1,4 +1,4 @@
-name: Enderarch KGUI Build
+name: Enderarch CGUI Build
 
 on:
   release:
@@ -35,9 +35,9 @@ jobs:
             util-linux \
             kmod
 
-      - name: Build kgui flavour
+      - name: Build cgui flavour
         run: |
-          make kgui
+          make cgui
 
       - name: Upload ISO to Release
         uses: softprops/action-gh-release@v1
