@@ -23,14 +23,27 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up builder user
-        run: |
-          useradd -m builder 2>/dev/null || true
-          echo "builder ALL=(root) NOPASSWD:ALL" >> /etc/sudoers
-
       - name: Install build dependencies
         run: |
-          pacman -Syu --noconfirm base-devel git make
+          pacman -Syu --noconfirm \
+            base-devel \
+            git \
+            make \
+            pacstrap \
+            arch-chroot \
+            mksquashfs \
+            mkinitcpio \
+            xorriso \
+            grub \
+            isolinux \
+            syslinux \
+            e2fsprogs \
+            dosfstools \
+            openssl \
+            perl \
+            util-linux \
+            kmod \
+            finch
 
       - name: Build mingui flavour
         run: |
