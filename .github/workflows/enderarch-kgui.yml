@@ -30,7 +30,7 @@ jobs:
             git \
             make \
             arch-install-scripts \
-            mksquashfs \
+            squashfs-tools \
             mkinitcpio \
             xorriso \
             grub \
@@ -41,8 +41,7 @@ jobs:
             openssl \
             perl \
             util-linux \
-            kmod \
-            finch
+            kmod
 
       - name: Build kgui flavour
         run: |
