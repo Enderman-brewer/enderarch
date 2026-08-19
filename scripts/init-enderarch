@@ -12,10 +12,14 @@ echo "ENDERARCH: Mode = $MODE"
 
 # Find the squashfs
 SFS_PATH=""
+ISO_MOUNT_ERRORS=""
 for dev in /dev/sr0 /dev/sr1 /dev/disk/by-label/ENDERARCH* /dev/disk/by-uuid/*; do
     [ -b "$dev" ] || continue
     mkdir -p /mnt/iso
-    mount -t iso9660 -o ro "$dev" /mnt/iso 2>/dev/null || continue
+    if ! mount -t iso9660 -o ro "$dev" /mnt/iso 2>/dev/null; then
+        ISO_MOUNT_ERRORS="${ISO_MOUNT_ERRORS} $dev:iso9660_mount_failed"
+        continue
+    fi
     if [ -f /mnt/iso/LiveOS/rootfs.sfs ]; then
         SFS_PATH="/mnt/iso/LiveOS/rootfs.sfs"
         echo "ENDERARCH: Found rootfs.sfs on $dev"
@@ -29,7 +33,10 @@ if [ -z "$SFS_PATH" ]; then
     mkdir -p /mnt/iso
     for dev in $(ls /dev/sd* /dev/nvme* /dev/mmcblk* 2>/dev/null | sort -u || true); do
         [ -b "$dev" ] || continue
-        mount -o ro "$dev" /mnt/iso 2>/dev/null || continue
+        if ! mount -o ro "$dev" /mnt/iso 2>/dev/null; then
+            ISO_MOUNT_ERRORS="${ISO_MOUNT_ERRORS} $dev:mount_failed"
+            continue
+        fi
         if [ -f /mnt/iso/LiveOS/rootfs.sfs ]; then
             SFS_PATH="/mnt/iso/LiveOS/rootfs.sfs"
             echo "ENDERARCH: Found rootfs.sfs on $dev (fallback)"
@@ -37,6 +44,13 @@ if [ -z "$SFS_PATH" ]; then
         fi
         umount /mnt/iso 2>/dev/null || true
     done
+fi
+
+if [ -z "$SFS_PATH" ]; then
+    echo "ENDERARCH: ERROR — Could not find rootfs.sfs!"
+    echo "ENDERARCH: Tried all block devices. See diagnostic below."
+    [ -n "$ISO_MOUNT_ERRORS" ] && echo "ENDERARCH: Mount failures:${ISO_MOUNT_ERRORS}"
+    fail "rootfs.sfs not found — ISO missing LiveOS/rootfs.sfs or wrong device"
 fi
 
 if [ -z "$SFS_PATH" ]; then

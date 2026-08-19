@@ -81,6 +81,8 @@ case "$CHOICE" in
         ;;
     r|R|rescan)
         echo "ENDERLOADER: Rescanning..."
+        # Re-source failure handler before recursion (fresh shell)
+        . /lib/enderarch/enderarch-fail 2>/dev/null || true
         exec /lib/enderarch/init-mode
         ;;
     '')
