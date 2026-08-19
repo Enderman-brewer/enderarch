@@ -26,7 +26,6 @@ qemu-user-static-bin
 xorg-server
 xorg-xinit
 openbox
-obconf
 lxterminal
 firefox
 lightdm
