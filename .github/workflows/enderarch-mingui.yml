@@ -34,7 +34,6 @@ jobs:
             mkinitcpio \
             xorriso \
             grub \
-            isolinux \
             syslinux \
             e2fsprogs \
             dosfstools \
