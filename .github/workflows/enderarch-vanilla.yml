@@ -10,6 +10,8 @@ jobs:
     container:
       image: archlinux:latest
       options: --user root --privileged
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
