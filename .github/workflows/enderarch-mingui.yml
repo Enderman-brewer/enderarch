@@ -29,8 +29,7 @@ jobs:
             base-devel \
             git \
             make \
-            pacstrap \
-            arch-chroot \
+            arch-install-scripts \
             mksquashfs \
             mkinitcpio \
             xorriso \
