@@ -1,8 +1,8 @@
-# Enderarch CGOI — Cinnamon GUI ISO — x86_64 packages
+# Enderarch CGUI — Cinnamon GUI ISO — ARM64 packages
 # Base system
 base
-linux
-linux-lts
+linux-aarch64
+linux-lts-aarch64
 linux-firmware
 sudo
 grub
@@ -20,6 +20,8 @@ ntfs-3g
 btrfs-progs
 dosfstools
 e2fsprogs
+# ARM emulation for x86_64 rootfs
+qemu-user-static-bin
 # Desktop
 cinnamon
 lightdm
