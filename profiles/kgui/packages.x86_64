@@ -22,7 +22,7 @@ dosfstools
 e2fsprogs
 # Desktop
 plasma-meta
-plasma-wayland-session
+plasma-workspace
 breeze
 breeze-gtk
 kde-gtk-config
