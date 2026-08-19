@@ -22,7 +22,7 @@ dosfstools
 e2fsprogs
 # Desktop
 cinnamon
-cinnamon-themes
+cinnamon-gtk-theme
 lightdm
 lightdm-gtk-greeter
 firefox
