@@ -12,13 +12,6 @@ jobs:
     container:
       image: archlinux:latest
       options: --user root
-    services:
-      docker:
-        image: docker:dind
-        ports: ["2375:2375"]
-        options: >-
-          --privileged
-          -v /var/run/docker.sock:/var/run/docker.sock
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
