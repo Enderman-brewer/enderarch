@@ -103,14 +103,13 @@ mkdir -p "${ISO_DIR}/boot/x86_64" \
          "${ISO_DIR}/boot/arm64" \
          "${ISO_DIR}/boot/grub" \
          "${ISO_DIR}/EFI/BOOT" \
-         "${ISO_DIR}/isolinux" \
          "${ISO_DIR}/LiveOS" \
          "${OUT_DIR}"
 
 # ------------------------------------------------------------------
 # Check required tools
 # ------------------------------------------------------------------
-REQUIRED_CMDS=(pacstrap arch-chroot mksquashfs mkinitcpio xorriso)
+REQUIRED_CMDS=(pacstrap arch-chroot mksquashfs mkinitcpio xorriso grub-mkimage)
 for cmd in "${REQUIRED_CMDS[@]}"; do
     if ! command -v "$cmd" &>/dev/null; then
         echo "Error: required tool '$cmd' not found. Please install it."
@@ -483,72 +482,26 @@ if [[ -f "$GRUB_CFG_SRC" ]]; then
     echo "    Generated grub.cfg"
 fi
 
-# -- EFI boot executables (standalone GRUB images) --
-# x86_64
-if [[ -f "/usr/lib/grub/x86_64-efi/grub.efi" ]]; then
-    cp "/usr/lib/grub/x86_64-efi/grub.efi" "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI"
-    echo "    Copied BOOTX64.EFI"
-elif command -v grub-mkstandalone &>/dev/null; then
-    echo "    Building BOOTX64.EFI with grub-mkstandalone..."
-    if grub-mkstandalone -O x86_64-efi \
-        -o "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" \
-        --modules="linux loopback iso9660 squash4 ext2 part_msdos part_gpt search search_fs_file normal configfile echo test true" \
-        "boot/grub/grub.cfg=${GRUB_CFG_DST}" 2>/dev/null; then
-        echo "    Built BOOTX64.EFI"
-    else
-        echo "    Warning: grub-mkstandalone failed to build BOOTX64.EFI"
-        rm -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI"
-    fi
-fi
+# -- Standalone GRUB EFI boot executables --
+GRUB_MODULES="part_msdos part_gpt fat iso9660 squash4 linux loopback search search_fs_file normal configfile echo ls reboot halt efi_gop efi_uga"
+for grub_target in x86_64-efi arm64-efi; do
+    case "$grub_target" in
+        x86_64-efi) efi_name=BOOTX64.EFI ;;
+        arm64-efi) efi_name=BOOTAA64.EFI ;;
+    esac
+    echo "    Building ${efi_name} with grub-mkimage..."
+    grub-mkimage -O "$grub_target" \
+        -o "${ISO_DIR}/EFI/BOOT/${efi_name}" \
+        -p /boot/grub \
+        -c "${GRUB_DIR}/embed.cfg" \
+        $GRUB_MODULES 2>/dev/null || {
+        echo "    Warning: could not build ${efi_name}"
+        rm -f "${ISO_DIR}/EFI/BOOT/${efi_name}"
+    }
+done
 
-# ARM64
-if [[ -f "/usr/lib/grub/arm64-efi/grub.efi" ]]; then
-    cp "/usr/lib/grub/arm64-efi/grub.efi" "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI"
-    echo "    Copied BOOTAA64.EFI"
-elif command -v grub-mkstandalone &>/dev/null; then
-    echo "    Building BOOTAA64.EFI with grub-mkstandalone..."
-    if grub-mkstandalone -O arm64-efi \
-        -o "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" \
-        --modules="linux loopback iso9660 squash4 ext2 part_msdos part_gpt search search_fs_file normal configfile echo test true" \
-        "boot/grub/grub.cfg=${GRUB_CFG_DST}" 2>/dev/null; then
-        echo "    Built BOOTAA64.EFI"
-    else
-        echo "    Warning: grub-mkstandalone failed to build BOOTAA64.EFI"
-        rm -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI"
-    fi
-fi
-
-# -- Isolinux / BIOS boot files --
-if [[ -d "/usr/lib/syslinux/bios" ]]; then
-    echo "    Copying isolinux files from host..."
-    for f in isolinux.bin ldlinux.c32 mboot.c32 vesamenu.c32 libcom32.c32 libutil.c32; do
-        src="/usr/lib/syslinux/bios/${f}"
-        if [[ -f "$src" ]]; then
-            cp "$src" "${ISO_DIR}/isolinux/" 2>/dev/null || true
-        fi
-    done
-fi
-
-# Use the repo's isolinux.cfg (it references both initramfs images)
-if [[ -f "${GRUB_DIR}/isolinux.cfg" && -f "${ISO_DIR}/isolinux/isolinux.bin" ]]; then
-    cp "${GRUB_DIR}/isolinux.cfg" "${ISO_DIR}/isolinux/isolinux.cfg"
-    echo "    Copied isolinux.cfg"
-fi
-
-# Write a minimal isolinux.cfg if none exists
-if [[ ! -f "${ISO_DIR}/isolinux/isolinux.cfg" ]]; then
-    cat > "${ISO_DIR}/isolinux/isolinux.cfg" << ISOCFG
-DEFAULT enderarch
-LABEL enderarch
-    LINUX ../boot/x86_64/vmlinuz-linux
-    INITRD ../boot/x86_64/initramfs-common.img,../boot/x86_64/initramfs-enderarch.img
-    APPEND root=live:LABEL=ENDERARCH_${FLAVOR} quiet splash
-ISOCFG
-    echo "    Wrote default isolinux.cfg"
-fi
-
-# -- GRUB i386-pc BIOS boot fallback (if isolinux not available) --
-if [[ ! -f "${ISO_DIR}/isolinux/isolinux.bin" ]] && command -v grub-mkimage &>/dev/null; then
+# -- GRUB i386-pc BIOS boot image --
+if command -v grub-mkimage &>/dev/null; then
     echo "    Building GRUB i386-pc BIOS boot image via grub-mkimage -O i386-pc-eltorito..."
     GRUB_BIOS_CD="${ISO_DIR}/boot/grub/i386-pc/eltorito.img"
     # Use grub-mkimage -O i386-pc-eltorito which properly prepends cdboot.img
@@ -580,7 +533,7 @@ fi
 
 # -- Create an EFI boot partition image for UEFI hybrid boot --
 # This FAT image is referenced by xorriso's -e flag for the UEFI boot chain.
-if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" ]]; then
+if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" || -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" ]]; then
     echo "    Creating EFI boot partition image..."
     EFI_IMG="${ISO_DIR}/EFI/BOOT/efi.img"
     dd if=/dev/zero of="$EFI_IMG" bs=1M count=32 2>/dev/null
@@ -624,14 +577,8 @@ XORRISO_ARGS=(
     -full-iso9660-filenames
 )
 
-# BIOS (isolinux) boot — only if isolinux was copied
-if [[ -f "${ISO_DIR}/isolinux/isolinux.bin" ]]; then
-    XORRISO_ARGS+=(
-        -eltorito-boot isolinux/isolinux.bin
-        -eltorito-catalog isolinux/boot.cat
-        -no-emul-boot -boot-load-size 4 -boot-info-table
-    )
-elif [[ -f "${ISO_DIR}/boot/grub/i386-pc/eltorito.img" ]]; then
+# BIOS GRUB boot
+if [[ -f "${ISO_DIR}/boot/grub/i386-pc/eltorito.img" ]]; then
     echo "    Using GRUB i386-pc eltorito BIOS boot image"
     XORRISO_ARGS+=(
         -eltorito-boot boot/grub/i386-pc/eltorito.img
@@ -641,9 +588,7 @@ fi
 
 # MBR for hybrid BIOS/UEFI boot
 MBR_SOURCE=""
-if [[ -f "/usr/lib/syslinux/bios/isohdpfx.bin" ]]; then
-    MBR_SOURCE="/usr/lib/syslinux/bios/isohdpfx.bin"
-elif [[ -f "/usr/lib/grub/i386-pc/boot_hybrid.img" ]]; then
+if [[ -f "/usr/lib/grub/i386-pc/boot_hybrid.img" ]]; then
     MBR_SOURCE="/usr/lib/grub/i386-pc/boot_hybrid.img"
 elif [[ -f "/usr/lib/grub/i386-pc/boot.img" ]]; then
     MBR_SOURCE="/usr/lib/grub/i386-pc/boot.img"

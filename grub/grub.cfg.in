@@ -6,20 +6,23 @@ if [ ${grub_cpu} = x86_64 ]; then
   set arch=x86_64
 elif [ ${grub_cpu} = arm64 ] || [ ${grub_cpu} = aarch64 ]; then
   set arch=arm64
+  set kernel_suffix=-aarch64
 else
   set arch=x86_64
 fi
 
-# Load architecture-appropriate modules
-if [ ${grub_cpu} = x86_64 ]; then
-  insmod linux
-  insmod loopback
-  insmod iso9660
-  insmod squash4
-  insmod ext2
-  insmod part_msdos
-  insmod part_gpt
+if [ -z "${kernel_suffix}" ]; then
+  set kernel_suffix=
 fi
+
+# Load architecture-appropriate modules
+insmod linux
+insmod loopback
+insmod iso9660
+insmod squash4
+insmod ext2
+insmod part_msdos
+insmod part_gpt
 
 # Probe the boot device
 # First try to find the ISO by volume label.
@@ -49,7 +52,7 @@ function enderarch_entry {
   
   menuentry "Enderarch ${FLAVOR} (${kernel_name}) — ${mode_str}" --class arch {
     set gfxpayload=keep
-    linux /boot/${arch}/vmlinuz-${kernel_ver} archisobasedir=LiveOS archisodevice=/dev/disk/by-label/ENDERARCH_${FLAVOR} enderarch.mode=${mode} quiet splash
+    linux /boot/${arch}/vmlinuz-${kernel_ver}${kernel_suffix} archisobasedir=LiveOS archisodevice=/dev/disk/by-label/ENDERARCH_${FLAVOR} enderarch.mode=${mode} quiet splash
     initrd /boot/${arch}/initramfs-common.img /boot/${arch}/initramfs-enderarch.img
   }
 }
@@ -60,39 +63,39 @@ function enderloader_entry {
   
   menuentry "Enderloader ${FLAVOR} (${kernel_name})" --class arch --class recovery {
     set gfxpayload=keep
-    linux /boot/${arch}/vmlinuz-${kernel_ver} archisobasedir=LiveOS archisodevice=/dev/disk/by-label/ENDERARCH_${FLAVOR} enderarch.mode=recovery quiet
+    linux /boot/${arch}/vmlinuz-${kernel_ver}${kernel_suffix} archisobasedir=LiveOS archisodevice=/dev/disk/by-label/ENDERARCH_${FLAVOR} enderarch.mode=recovery quiet
     initrd /boot/${arch}/initramfs-common.img /boot/${arch}/initramfs-enderloader.img
   }
 }
 
 # Main menu
 menuentry "Boot Enderarch ${FLAVOR} (linux, RAM mode)" --class arch {
-  linux /boot/${arch}/vmlinuz-linux enderarch.mode=ram quiet splash
+  linux /boot/${arch}/vmlinuz-linux${kernel_suffix} enderarch.mode=ram quiet splash
   initrd /boot/${arch}/initramfs-common.img /boot/${arch}/initramfs-enderarch.img
 }
 
 menuentry "Boot Enderarch ${FLAVOR} (linux-lts, RAM mode)" --class arch {
-  linux /boot/${arch}/vmlinuz-linux-lts enderarch.mode=ram quiet splash
+  linux /boot/${arch}/vmlinuz-linux-lts${kernel_suffix} enderarch.mode=ram quiet splash
   initrd /boot/${arch}/initramfs-common.img /boot/${arch}/initramfs-enderarch.img
 }
 
 menuentry "Boot Enderarch ${FLAVOR} (linux, USB COW mode)" --class arch {
-  linux /boot/${arch}/vmlinuz-linux enderarch.mode=cow quiet splash
+  linux /boot/${arch}/vmlinuz-linux${kernel_suffix} enderarch.mode=cow quiet splash
   initrd /boot/${arch}/initramfs-common.img /boot/${arch}/initramfs-enderarch.img
 }
 
 menuentry "Boot Enderarch ${FLAVOR} (linux-lts, USB COW mode)" --class arch {
-  linux /boot/${arch}/vmlinuz-linux-lts enderarch.mode=cow quiet splash
+  linux /boot/${arch}/vmlinuz-linux-lts${kernel_suffix} enderarch.mode=cow quiet splash
   initrd /boot/${arch}/initramfs-common.img /boot/${arch}/initramfs-enderarch.img
 }
 
 menuentry "Enderloader Recovery (linux)" --class arch --class recovery {
-  linux /boot/${arch}/vmlinuz-linux enderarch.mode=recovery quiet
+  linux /boot/${arch}/vmlinuz-linux${kernel_suffix} enderarch.mode=recovery quiet
   initrd /boot/${arch}/initramfs-common.img /boot/${arch}/initramfs-enderloader.img
 }
 
 menuentry "Enderloader Recovery (linux-lts)" --class arch --class recovery {
-  linux /boot/${arch}/vmlinuz-linux-lts enderarch.mode=recovery quiet
+  linux /boot/${arch}/vmlinuz-linux-lts${kernel_suffix} enderarch.mode=recovery quiet
   initrd /boot/${arch}/initramfs-common.img /boot/${arch}/initramfs-enderloader.img
 }
 

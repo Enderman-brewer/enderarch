@@ -27,7 +27,6 @@ jobs:
             mkinitcpio \
             xorriso \
             grub \
-            syslinux \
             e2fsprogs \
             dosfstools \
             openssl \
