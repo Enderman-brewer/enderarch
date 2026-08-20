@@ -22,3 +22,8 @@ dosfstools
 e2fsprogs
 # Console extras
 htop
+kate
+alacritty
+kitty lxterminal
+xfce4-terminal
+rxvt-unicode
