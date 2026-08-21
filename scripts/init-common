@@ -16,6 +16,7 @@ mkdir -p /lib/enderarch /mnt /newroot /proc /sys /dev /run /tmp
 # Load core modules (built-in or from initrd)
 modprobe loop 2>/dev/null || true
 modprobe squashfs 2>/dev/null || true
+modprobe udf 2>/dev/null || true
 modprobe overlay 2>/dev/null || true
 
 # Architecture detection

@@ -1,26 +1,63 @@
 #!/bin/sh
-# find-squashfs — Locate /LiveOS/rootfs.sfs on boot media
-# Returns path to rootfs.sfs or exits with error
+# find-squashfs — Locate LiveOS/rootfs.sfs on boot media
+#
+# Usage: find-squashfs [mountpoint]
+#   Mounts the boot media read-only at <mountpoint> (default /mnt/iso) and
+#   prints the path to rootfs.sfs on stdout. The media is LEFT MOUNTED on
+#   success. On failure prints diagnostics to stderr and exits 1; the list of
+#   failed devices is left in $FIND_SQUASHFS_ERRORS.
+#
+# The ISO is an ISO 9660/UDF bridge: UDF is the canonical view (POSIX
+# metadata, >4GB files), so it is tried first. Auto-detect covers exotic USB
+# layouts; iso9660 is the last resort for the bare carrier.
 
-SFS_PATH=""
-for dev in /dev/sr0 /dev/sr1 /dev/disk/by-label/ENDERARCH* /dev/disk/by-uuid/*; do
-    [ -b "$dev" ] || continue
-    mount -t iso9660 -o ro "$dev" /mnt/iso 2>/dev/null || continue
-    if [ -f /mnt/iso/LiveOS/rootfs.sfs ]; then
-        echo "/mnt/iso/LiveOS/rootfs.sfs"
+MNT="${1:-/mnt/iso}"
+FIND_SQUASHFS_ERRORS=""
+
+try_mount() {
+    dev="$1"
+    [ -b "$dev" ] || return 1
+    mkdir -p "$MNT"
+    if mount -t udf -o ro "$dev" "$MNT" 2>/dev/null; then
+        return 0
+    fi
+    if mount -o ro "$dev" "$MNT" 2>/dev/null; then
+        return 0
+    fi
+    if mount -t iso9660 -o ro "$dev" "$MNT" 2>/dev/null; then
+        return 0
+    fi
+    FIND_SQUASHFS_ERRORS="${FIND_SQUASHFS_ERRORS} ${dev}:mount_failed"
+    return 1
+}
+
+check_media() {
+    if [ -f "${MNT}/LiveOS/rootfs.sfs" ]; then
+        echo "${MNT}/LiveOS/rootfs.sfs"
         exit 0
     fi
-    umount /mnt/iso 2>/dev/null || true
+    umount "$MNT" 2>/dev/null || true
+}
+
+# Fast path: devices carrying our volume label
+for dev in /dev/disk/by-label/ENDERARCH*; do
+    [ -e "$dev" ] || continue
+    try_mount "$dev" && check_media
 done
-# Fallback: try all block devices
-for dev in $(ls /dev/sd* /dev/nvme* /dev/mmcblk* 2>/dev/null | sort -u || true); do
-    [ -b "$dev" ] || continue
-    mount -o ro "$dev" /mnt/iso 2>/dev/null || continue
-    if [ -f /mnt/iso/LiveOS/rootfs.sfs ]; then
-        echo "/mnt/iso/LiveOS/rootfs.sfs"
-        exit 0
-    fi
-    umount /mnt/iso 2>/dev/null || true
+
+# Optical drives
+for dev in /dev/sr0 /dev/sr1 /dev/sr2; do
+    try_mount "$dev" && check_media
 done
+
+# Brute force: whole disks and partitions (handles dd'd USB sticks, hybrid
+# layouts, and card readers)
+for dev in $(ls /dev/sd*[0-9] /dev/sd[a-z] /dev/nvme*n*p* /dev/mmcblk*p* /dev/vd[a-z] 2>/dev/null | sort -u); do
+    try_mount "$dev" && check_media
+done
+
 echo "ERROR: rootfs.sfs not found" >&2
+if [ -n "$FIND_SQUASHFS_ERRORS" ]; then
+    echo "Mount failures:${FIND_SQUASHFS_ERRORS}" >&2
+fi
 exit 1

@@ -482,8 +482,16 @@ if [[ -f "$GRUB_CFG_SRC" ]]; then
     echo "    Generated grub.cfg"
 fi
 
+# -- GRUB fonts (needed for gfxterm rendering) --
+if [[ -d "/usr/share/grub" ]]; then
+    mkdir -p "${ISO_DIR}/boot/grub/fonts"
+    cp -a /usr/share/grub/*.pf2 "${ISO_DIR}/boot/grub/fonts/" 2>/dev/null || true
+fi
+
 # -- Standalone GRUB EFI boot executables --
-GRUB_MODULES="part_msdos part_gpt fat iso9660 squash4 linux loopback search search_fs_file normal configfile echo ls reboot halt efi_gop efi_uga"
+# 'udf' is required to read the UDF bridge volume; iso9660 stays as a fallback
+# for the carrier structures and older media.
+GRUB_MODULES="part_msdos part_gpt fat udf iso9660 squash4 linux loopback search search_fs_file search_fs_uuid search_label normal configfile echo ls reboot halt efi_gop efi_uga"
 for grub_target in x86_64-efi arm64-efi; do
     case "$grub_target" in
         x86_64-efi) efi_name=BOOTX64.EFI ;;
@@ -520,8 +528,8 @@ if command -v grub-mkimage &>/dev/null; then
         -o "$GRUB_BIOS_CD" \
         -p /boot/grub \
         -c "${GRUB_DIR}/embed.cfg" \
-        linux loopback iso9660 squash4 ext2 part_msdos part_gpt \
-        search search_fs_file normal configfile echo test true \
+        linux loopback udf iso9660 squash4 ext2 part_msdos part_gpt \
+        search search_fs_file search_label normal configfile echo test true \
         biosdisk 2>/dev/null || {
         echo "    Warning: grub-mkimage failed for BIOS boot"
         rm -f "$GRUB_BIOS_CD"
@@ -570,11 +578,23 @@ fi
 if [[ $START_PHASE -le 6 ]]; then
 echo "==> Phase 6: Generating ISO"
 
+# Filesystem: ISO 9660/UDF bridge.
+# xorriso cannot emit pure UDF, so we layer a complete UDF filesystem on top of
+# a minimal ISO 9660 carrier via -udf. Operating systems that understand UDF
+# (Linux, Windows Vista+, macOS) mount the volume as UDF, which removes the
+# CDFS/ISO9660 limitations (4GB file ceiling, no POSIX metadata, path depth).
+# The ISO 9660 structures remain only as the bootstrap carrier for El Torito
+# and are ignored by modern OSes. Rock Ridge (-r) preserves permissions and
+# symlinks; Joliet (-J) gives Windows Explorer sane long filenames.
 XORRISO_ARGS=(
     -as mkisofs
     -V "ENDERARCH_${FLAVOR}"
     -iso-level 3
     -full-iso9660-filenames
+    -udf
+    -r
+    -J
+    -joliet-long
 )
 
 # BIOS GRUB boot

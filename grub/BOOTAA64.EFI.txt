@@ -1,4 +1,8 @@
 BOOTAA64.EFI is built at ISO assembly time using:
 grub-mkimage -O arm64-efi -p /boot/grub -o BOOTAA64.EFI -c embed.cfg \
-  part_msdos part_gpt fat iso9660 squash4 linux loopback search normal configfile \
-  echo ls reboot halt efi_gop
+  part_msdos part_gpt fat udf iso9660 squash4 linux loopback search \
+  search_fs_file search_label normal configfile echo ls reboot halt \
+  efi_gop
+
+'udf' is required: the ISO is an ISO 9660/UDF bridge and UDF is the
+filesystem view every modern OS mounts.
