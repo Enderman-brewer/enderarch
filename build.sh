@@ -109,13 +109,19 @@ mkdir -p "${ISO_DIR}/boot/x86_64" \
 # ------------------------------------------------------------------
 # Check required tools
 # ------------------------------------------------------------------
-REQUIRED_CMDS=(pacstrap arch-chroot mksquashfs mkinitcpio xorriso grub-mkimage)
+REQUIRED_CMDS=(pacstrap arch-chroot mksquashfs mkinitcpio grub-mkimage)
 for cmd in "${REQUIRED_CMDS[@]}"; do
     if ! command -v "$cmd" &>/dev/null; then
         echo "Error: required tool '$cmd' not found. Please install it."
         exit 1
     fi
 done
+# ISO generator with UDF support (checked up front for fast feedback)
+if ! command -v mkisofs &>/dev/null && ! command -v genisoimage &>/dev/null; then
+    echo "Error: no ISO generator with UDF support found."
+    echo "  Install 'cdrtools' (mkisofs, preferred) or 'cdrkit' (genisoimage)."
+    exit 1
+fi
 
 # ==================================================================
 # Phase 1: Installing base system (x86_64)
@@ -540,7 +546,8 @@ if command -v grub-mkimage &>/dev/null; then
 fi
 
 # -- Create an EFI boot partition image for UEFI hybrid boot --
-# This FAT image is referenced by xorriso's -e flag for the UEFI boot chain.
+# This FAT image becomes the second El Torito entry (platform id 0xEF) and,
+# after isohybrid --uefi, the GPT/MBR ESP partition for USB boot.
 if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" || -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" ]]; then
     echo "    Creating EFI boot partition image..."
     EFI_IMG="${ISO_DIR}/EFI/BOOT/efi.img"
@@ -578,72 +585,100 @@ fi
 if [[ $START_PHASE -le 6 ]]; then
 echo "==> Phase 6: Generating ISO"
 
-# Filesystem: ISO 9660/UDF bridge.
-# xorriso cannot emit pure UDF, so we layer a complete UDF filesystem on top of
-# a minimal ISO 9660 carrier via -udf. Operating systems that understand UDF
-# (Linux, Windows Vista+, macOS) mount the volume as UDF, which removes the
-# CDFS/ISO9660 limitations (4GB file ceiling, no POSIX metadata, path depth).
-# The ISO 9660 structures remain only as the bootstrap carrier for El Torito
-# and are ignored by modern OSes. Rock Ridge (-r) preserves permissions and
-# symlinks; Joliet (-J) gives Windows Explorer sane long filenames.
-XORRISO_ARGS=(
-    -as mkisofs
+ISO_OUT="${OUT_DIR}/${ISONAME_FULL}.iso"
+
+# ------------------------------------------------------------------
+# Locate an ISO generator with UDF support.
+# xorriso cannot write UDF, so we use the classic mkisofs family:
+#   mkisofs     (cdrtools) — "Rationalized UDF", preferred
+#   genisoimage (cdrkit)   — alpha UDF, acceptable fallback
+# ------------------------------------------------------------------
+ISO_GEN=""
+for cand in mkisofs genisoimage; do
+    if command -v "$cand" &>/dev/null; then
+        ISO_GEN="$cand"
+        break
+    fi
+done
+if [[ -z "$ISO_GEN" ]]; then
+    echo "Error: no ISO generator found. Install 'cdrtools' (mkisofs)"
+    echo "  or 'cdrkit' (genisoimage). xorriso cannot write UDF."
+    exit 1
+fi
+echo "    Using ISO generator: ${ISO_GEN}"
+
+# Filesystem layout: ISO 9660/UDF bridge (the same pattern Windows uses for
+# its own ISOs). The full payload lives in the UDF filesystem; a minimal
+# ISO 9660 carrier exists only to host the El Torito boot records. Modern
+# OSes auto-mount the UDF view, which removes the CDFS limitations (4GB file
+# ceiling, no POSIX metadata, path depth).
+#   -r  Rock Ridge: permissions/symlinks for Linux
+#   -J  Joliet (+-joliet-long): long filenames for Windows Explorer
+#   -udf  the actual payload filesystem
+GEN_ARGS=(
     -V "ENDERARCH_${FLAVOR}"
     -iso-level 3
-    -full-iso9660-filenames
-    -udf
     -r
     -J
     -joliet-long
+    -udf
 )
 
-# BIOS GRUB boot
+# BIOS boot: GRUB i386-pc El Torito image (paths are relative to ISO_DIR)
 if [[ -f "${ISO_DIR}/boot/grub/i386-pc/eltorito.img" ]]; then
-    echo "    Using GRUB i386-pc eltorito BIOS boot image"
-    XORRISO_ARGS+=(
-        -eltorito-boot boot/grub/i386-pc/eltorito.img
+    echo "    El Torito BIOS entry: GRUB i386-pc eltorito.img"
+    GEN_ARGS+=(
+        -b boot/grub/i386-pc/eltorito.img
+        -c boot/grub/boot.cat
         -no-emul-boot -boot-load-size 4 -boot-info-table
     )
-fi
-
-# MBR for hybrid BIOS/UEFI boot
-MBR_SOURCE=""
-if [[ -f "/usr/lib/grub/i386-pc/boot_hybrid.img" ]]; then
-    MBR_SOURCE="/usr/lib/grub/i386-pc/boot_hybrid.img"
-elif [[ -f "/usr/lib/grub/i386-pc/boot.img" ]]; then
-    MBR_SOURCE="/usr/lib/grub/i386-pc/boot.img"
-fi
-
-if [[ -n "$MBR_SOURCE" ]]; then
-    XORRISO_ARGS+=(-isohybrid-mbr "$MBR_SOURCE")
-    echo "    Using MBR: ${MBR_SOURCE}"
 else
-    echo "    Warning: No MBR source found; ISO will not have a partition table"
+    echo "    Warning: no BIOS eltorito.img staged; CD BIOS boot unavailable"
 fi
 
-# x86_64 UEFI boot entry
+# UEFI boot: FAT ESP image as second El Torito entry (platform id 0xEF)
 if [[ -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
-    # Use -e (not --efi-boot) so xorriso creates a hybrid MBR+GPT partition table.
-    # --efi-boot suppresses GPT creation entirely, leaving only bare El Torito
-    # which some UEFI firmware rejects. With -e, xorriso creates proper MBR
-    # partition entries (type 0xef) and matching GPT entries via
-    # -isohybrid-gpt-basdat, making the ISO detectable as a bootable device.
-    XORRISO_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/efi.img -no-emul-boot)
+    echo "    El Torito UEFI entry: EFI/BOOT/efi.img"
+    GEN_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/efi.img -no-emul-boot)
+else
+    echo "    Warning: no EFI/BOOT/efi.img staged; CD UEFI boot unavailable"
 fi
 
-# ARM64 UEFI boot entry (separate alt-boot if EFI image contains AA64)
-if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" && ! -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
-    XORRISO_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/BOOTAA64.EFI -no-emul-boot)
+echo "    Generating ${ISO_OUT} ..."
+
+# cdrkit's genisoimage has alpha-grade UDF with unreliable >4GB file support;
+# warn loudly rather than shipping a silently broken payload.
+if [[ "$ISO_GEN" = "genisoimage" ]]; then
+    big=$(find "$ISO_DIR" -type f -size +4G -print -quit 2>/dev/null || true)
+    if [[ -n "$big" ]]; then
+        echo "    WARNING: ${big} exceeds 4GB and genisoimage's UDF is alpha."
+        echo "    Install cdrtools (mkisofs) for reliable >4GB UDF support."
+    fi
 fi
 
-XORRISO_ARGS+=(-isohybrid-gpt-basdat)
-XORRISO_ARGS+=(-o "${OUT_DIR}/${ISONAME_FULL}.iso")
-XORRISO_ARGS+=("${ISO_DIR}")
+"$ISO_GEN" "${GEN_ARGS[@]}" -o "$ISO_OUT" "$ISO_DIR"
 
-echo "    Running xorriso..."
-xorriso "${XORRISO_ARGS[@]}"
+# ------------------------------------------------------------------
+# Hybridize for USB sticks (dd the ISO to a block device and it boots).
+# isohybrid stamps an MBR that re-enters the El Torito boot path when the
+# medium appears as a hard disk; --uefi additionally adds a GPT entry for
+# the EFI partition so UEFI firmware finds the ESP on USB.
+# ------------------------------------------------------------------
+if ! command -v isohybrid &>/dev/null; then
+    echo "Error: 'isohybrid' not found (syslinux package)."
+    echo "  Without it the ISO boots from CD but NOT from USB."
+    exit 1
+fi
+if isohybrid --help 2>&1 | grep -q -- '--uefi'; then
+    echo "    Stamping hybrid MBR + GPT (isohybrid --uefi)..."
+    isohybrid --uefi "$ISO_OUT"
+else
+    echo "    Stamping hybrid MBR (isohybrid; no --uefi support in this build)..."
+    echo "    Note: UEFI firmware on USB may not find the ESP without GPT."
+    isohybrid "$ISO_OUT"
+fi
 
 echo ""
-echo "==> Done: ${OUT_DIR}/${ISONAME_FULL}.iso"
+echo "==> Done: ${ISO_OUT}"
 
 fi
