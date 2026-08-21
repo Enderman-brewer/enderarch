@@ -637,19 +637,28 @@ else
 fi
 
 # UEFI boot: FAT ESP image as second El Torito entry (platform id 0xEF).
-# Entry syntax differs between generators:
-#   cdrtools mkisofs:  -eltorito-platform efi -b <img>
-#   cdrkit genisoimage: -e <img>
+# There is NO portable syntax: cdrtools uses -eltorito-platform, while -e
+# only exists in RedHat's patched genisoimage (plain Debian cdrkit has no
+# EFI support at all). Pick by binary name, retry the other on rejection.
+EFI_PRIMARY=()
+EFI_FALLBACK=()
 if [[ -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
     echo "    El Torito UEFI entry: EFI/BOOT/efi.img"
-    if "$ISO_GEN" -help 2>&1 | grep -q -- '-eltorito-platform'; then
-        GEN_ARGS+=(-eltorito-alt-boot -eltorito-platform efi -b EFI/BOOT/efi.img -no-emul-boot)
+    if [[ "$ISO_GEN" = "mkisofs" ]]; then
+        EFI_PRIMARY=(-eltorito-alt-boot -eltorito-platform efi -b EFI/BOOT/efi.img -no-emul-boot)
+        EFI_FALLBACK=(-eltorito-alt-boot -e EFI/BOOT/efi.img -no-emul-boot)
     else
-        GEN_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/efi.img -no-emul-boot)
+        EFI_PRIMARY=(-eltorito-alt-boot -e EFI/BOOT/efi.img -no-emul-boot)
+        EFI_FALLBACK=(-eltorito-alt-boot -eltorito-platform efi -b EFI/BOOT/efi.img -no-emul-boot)
     fi
 else
     echo "    Warning: no EFI/BOOT/efi.img staged; CD UEFI boot unavailable"
 fi
+
+run_generator() {
+    "$ISO_GEN" "${GEN_ARGS[@]}" "${EFI_PRIMARY[@]+"${EFI_PRIMARY[@]}"}" \
+        -o "$ISO_OUT" "$ISO_DIR"
+}
 
 echo "    Generating ${ISO_OUT} ..."
 
@@ -663,7 +672,28 @@ if [[ "$ISO_GEN" = "genisoimage" ]]; then
     fi
 fi
 
-"$ISO_GEN" "${GEN_ARGS[@]}" -o "$ISO_OUT" "$ISO_DIR"
+GEN_RC=0
+GEN_OUT="$(run_generator)" || GEN_RC=$?
+[[ -n "$GEN_OUT" ]] && printf '%s\n' "$GEN_OUT"
+
+if [[ $GEN_RC -ne 0 ]]; then
+    if [[ ${#EFI_PRIMARY[@]} -gt 0 ]] && \
+       printf '%s\n' "$GEN_OUT" | grep -qiE 'bad option|invalid option|unknown option|unsupported option'; then
+        echo "    Generator rejected the El Torito EFI syntax; retrying with alternate..."
+        run_generator_retry() {
+            "$ISO_GEN" "${GEN_ARGS[@]}" "${EFI_FALLBACK[@]+"${EFI_FALLBACK[@]}"}" \
+                -o "$ISO_OUT" "$ISO_DIR"
+        }
+        run_generator_retry || {
+            echo "Error: ISO generation failed with both EFI entry syntaxes."
+            echo "  Note: unpatched cdrkit 'genisoimage' cannot write EFI El Torito"
+            echo "  entries at all — install cdrtools ('mkisofs') instead."
+            exit 1
+        }
+    else
+        exit $GEN_RC
+    fi
+fi
 
 # ------------------------------------------------------------------
 # Hybridize for USB sticks (dd the ISO to a block device and it boots).
