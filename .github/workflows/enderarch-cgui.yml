@@ -25,8 +25,7 @@ jobs:
             arch-install-scripts \
             squashfs-tools \
             mkinitcpio \
-            cdrtools \
-            syslinux \
+            cdrtools \
             grub \
             e2fsprogs \
             dosfstools \

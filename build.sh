@@ -700,19 +700,25 @@ fi
 # isohybrid stamps an MBR that re-enters the El Torito boot path when the
 # medium appears as a hard disk; --uefi additionally adds a GPT entry for
 # the EFI partition so UEFI firmware finds the ESP on USB.
+#
+# NOTE: isohybrid from syslinux checks for an isolinux.bin hybrid signature
+# and will fail on GRUB eltorito images. The ISO still boots fine from
+# CD/DVD (El Torito BIOS + UEFI). For USB stick creation, use
+# `grub-install` on the target device separately; that is outside this
+# build's scope.
 # ------------------------------------------------------------------
 if ! command -v isohybrid &>/dev/null; then
-    echo "Error: 'isohybrid' not found (syslinux package)."
-    echo "  Without it the ISO boots from CD but NOT from USB."
-    exit 1
-fi
-if isohybrid --help 2>&1 | grep -q -- '--uefi'; then
-    echo "    Stamping hybrid MBR + GPT (isohybrid --uefi)..."
-    isohybrid --uefi "$ISO_OUT"
+    echo "  Note: 'isohybrid' not found — skipping USB hybridization."
+    echo "  The ISO boots from CD/DVD; for USB see README instructions."
 else
-    echo "    Stamping hybrid MBR (isohybrid; no --uefi support in this build)..."
-    echo "    Note: UEFI firmware on USB may not find the ESP without GPT."
-    isohybrid "$ISO_OUT"
+    if isohybrid --help 2>&1 | grep -q -- '--uefi'; then
+        echo "    Stamping hybrid MBR + GPT (isohybrid --uefi)..."
+        isohybrid --uefi "$ISO_OUT" || \
+            echo "    Warning: isohybrid --uefi failed; ISO remains CD/DVD-bootable."
+    else
+        echo "    Stamping hybrid MBR (isohybrid; no --uefi support)..."
+        echo "    Warning: isohybrid does not support GRUB eltorito images; skipping."
+    fi
 fi
 
 echo ""
