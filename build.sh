@@ -636,10 +636,17 @@ else
     echo "    Warning: no BIOS eltorito.img staged; CD BIOS boot unavailable"
 fi
 
-# UEFI boot: FAT ESP image as second El Torito entry (platform id 0xEF)
+# UEFI boot: FAT ESP image as second El Torito entry (platform id 0xEF).
+# Entry syntax differs between generators:
+#   cdrtools mkisofs:  -eltorito-platform efi -b <img>
+#   cdrkit genisoimage: -e <img>
 if [[ -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
     echo "    El Torito UEFI entry: EFI/BOOT/efi.img"
-    GEN_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/efi.img -no-emul-boot)
+    if "$ISO_GEN" -help 2>&1 | grep -q -- '-eltorito-platform'; then
+        GEN_ARGS+=(-eltorito-alt-boot -eltorito-platform efi -b EFI/BOOT/efi.img -no-emul-boot)
+    else
+        GEN_ARGS+=(-eltorito-alt-boot -e EFI/BOOT/efi.img -no-emul-boot)
+    fi
 else
     echo "    Warning: no EFI/BOOT/efi.img staged; CD UEFI boot unavailable"
 fi
