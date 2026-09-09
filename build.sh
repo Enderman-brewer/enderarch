@@ -516,19 +516,41 @@ if command -v grub-mkimage &>/dev/null; then
     #
     # The -c embed.cfg early config searches for /boot/grub/grub.cfg on the ISO
     # and loads it. The -p flag sets GRUB's prefix path for module loading.
-    grub-mkimage -O i386-pc-eltorito \
+    mkdir -p "$(dirname "$GRUB_BIOS_CD")"
+    GRUB_LOG=$(mktemp)
+    trap "rm -f $GRUB_LOG" RETURN
+    
+    # Try i386-pc-eltorito first (newer GRUB), fall back to i386-pc if not supported
+    GRUB_TARGET="i386-pc-eltorito"
+    if ! grub-mkimage -O "$GRUB_TARGET" \
         -o "$GRUB_BIOS_CD" \
         -p /boot/grub \
         -c "${GRUB_DIR}/embed.cfg" \
         linux loopback iso9660 squash4 ext2 part_msdos part_gpt \
         search search_fs_file normal configfile echo test true \
-        biosdisk 2>/dev/null || {
-        echo "    Warning: grub-mkimage failed for BIOS boot"
+        biosdisk >"$GRUB_LOG" 2>&1; then
+        echo "    Warning: grub-mkimage -O i386-pc-eltorito failed, trying i386-pc..."
+        cat "$GRUB_LOG" | head -3
         rm -f "$GRUB_BIOS_CD"
-    }
-    if [[ -f "$GRUB_BIOS_CD" ]]; then
-        echo "    Created GRUB i386-pc eltorito boot image"
+        GRUB_TARGET="i386-pc"
+        if ! grub-mkimage -O "$GRUB_TARGET" \
+            -o "$GRUB_BIOS_CD" \
+            -p /boot/grub \
+            -c "${GRUB_DIR}/embed.cfg" \
+            linux loopback iso9660 squash4 ext2 part_msdos part_gpt \
+            search search_fs_file normal configfile echo test true \
+            biosdisk >"$GRUB_LOG" 2>&1; then
+            echo "    ERROR: grub-mkimage failed for both i386-pc-eltorito and i386-pc:"
+            cat "$GRUB_LOG"
+            exit 2
+        fi
     fi
+    
+    if [[ ! -f "$GRUB_BIOS_CD" ]]; then
+        echo "    ERROR: GRUB BIOS boot image was not created at $GRUB_BIOS_CD"
+        exit 2
+    fi
+    echo "    Created GRUB i386-pc boot image (target: $GRUB_TARGET)"
 fi
 
 # -- Create an EFI boot partition image for UEFI hybrid boot --
@@ -536,31 +558,70 @@ fi
 if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" || -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" ]]; then
     echo "    Creating EFI boot partition image..."
     EFI_IMG="${ISO_DIR}/EFI/BOOT/efi.img"
-    dd if=/dev/zero of="$EFI_IMG" bs=1M count=32 2>/dev/null
-    mkfs.fat -F32 "$EFI_IMG" 2>/dev/null || {
-        echo "    Warning: mkfs.fat not available; EFI boot image not created"
+    
+    # Create FAT image
+    EFI_LOG=$(mktemp)
+    trap "rm -f $EFI_LOG" RETURN
+    
+    if ! dd if=/dev/zero of="$EFI_IMG" bs=1M count=32 >"$EFI_LOG" 2>&1; then
+        echo "    ERROR: failed to create EFI image with dd"
+        cat "$EFI_LOG"
+        exit 2
+    fi
+    
+    if ! mkfs.fat -F32 "$EFI_IMG" >"$EFI_LOG" 2>&1; then
+        echo "    ERROR: mkfs.fat failed; required for EFI boot:"
+        cat "$EFI_LOG"
         rm -f "$EFI_IMG"
+        exit 2
+    fi
+    
+    # Mount, copy EFI directory, unmount
+    MNT=$(mktemp -d)
+    _MNT_DIRS+=("$MNT")  # register with cleanup trap
+    
+    if ! mount "$EFI_IMG" "$MNT" >"$EFI_LOG" 2>&1; then
+        echo "    ERROR: could not mount EFI image at $MNT"
+        cat "$EFI_LOG"
+        rmdir "$MNT" 2>/dev/null || true
+        rm -f "$EFI_IMG"
+        exit 2
+    fi
+    
+    mkdir -p "$MNT/EFI/BOOT"
+    cp "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" "$MNT/EFI/BOOT/" || {
+        echo "    ERROR: failed to copy BOOTX64.EFI to EFI image"
+        umount "$MNT" 2>/dev/null || true
+        rmdir "$MNT" 2>/dev/null || true
+        rm -f "$EFI_IMG"
+        exit 2
     }
-    if [[ -f "$EFI_IMG" ]]; then
-        # Mount, copy EFI directory, unmount
-        MNT=$(mktemp -d)
-        _MNT_DIRS+=("$MNT")  # register with cleanup trap
-        if mount "$EFI_IMG" "$MNT" 2>/dev/null; then
-            mkdir -p "$MNT/EFI/BOOT"
-            cp "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" "$MNT/EFI/BOOT/"
-            if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" ]]; then
-                cp "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" "$MNT/EFI/BOOT/"
-            fi
-            umount "$MNT"
-            rmdir "$MNT"
-            echo "    EFI boot partition image created: ${EFI_IMG}"
-        else
-            echo "    Warning: could not mount EFI image; EFI boot partition image not created"
+    
+    if [[ -f "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" ]]; then
+        cp "${ISO_DIR}/EFI/BOOT/BOOTAA64.EFI" "$MNT/EFI/BOOT/" || {
+            echo "    ERROR: failed to copy BOOTAA64.EFI to EFI image"
             umount "$MNT" 2>/dev/null || true
             rmdir "$MNT" 2>/dev/null || true
             rm -f "$EFI_IMG"
-        fi
+            exit 2
+        }
     fi
+    
+    if ! umount "$MNT" >"$EFI_LOG" 2>&1; then
+        echo "    ERROR: failed to unmount EFI image"
+        cat "$EFI_LOG"
+        rmdir "$MNT" 2>/dev/null || true
+        rm -f "$EFI_IMG"
+        exit 2
+    fi
+    
+    rmdir "$MNT"
+    
+    if [[ ! -f "$EFI_IMG" ]]; then
+        echo "    ERROR: EFI boot image does not exist after creation"
+        exit 2
+    fi
+    echo "    EFI boot partition image created: ${EFI_IMG}"
 fi
 
 fi
@@ -620,10 +681,46 @@ XORRISO_ARGS+=(-isohybrid-gpt-basdat)
 XORRISO_ARGS+=(-o "${OUT_DIR}/${ISONAME_FULL}.iso")
 XORRISO_ARGS+=("${ISO_DIR}")
 
-echo "    Running xorriso..."
-xorriso "${XORRISO_ARGS[@]}"
+# Validate required files exist before calling xorriso
+echo "    Validating boot files..."
+if [[ ! -f "${ISO_DIR}/boot/grub/i386-pc/eltorito.img" ]]; then
+    echo "    ERROR: GRUB BIOS boot image not found at ${ISO_DIR}/boot/grub/i386-pc/eltorito.img"
+    exit 2
+fi
+
+if [[ ! -f "${ISO_DIR}/EFI/BOOT/BOOTX64.EFI" ]]; then
+    echo "    ERROR: x86_64 EFI bootloader not found at ${ISO_DIR}/EFI/BOOT/BOOTX64.EFI"
+    exit 2
+fi
+
+if [[ ! -f "${ISO_DIR}/EFI/BOOT/efi.img" ]]; then
+    echo "    ERROR: EFI boot partition image not found at ${ISO_DIR}/EFI/BOOT/efi.img"
+    exit 2
+fi
+
+if [[ ! -d "${ISO_DIR}/LiveOS" ]] || [[ ! -f "${ISO_DIR}/LiveOS/rootfs.sfs" ]]; then
+    echo "    ERROR: SquashFS rootfs not found at ${ISO_DIR}/LiveOS/rootfs.sfs"
+    exit 2
+fi
+
+echo "    All boot files present. Running xorriso..."
+XORRISO_LOG=$(mktemp)
+trap "rm -f $XORRISO_LOG" RETURN
+
+if ! xorriso "${XORRISO_ARGS[@]}" >"$XORRISO_LOG" 2>&1; then
+    echo "    ERROR: xorriso failed:"
+    cat "$XORRISO_LOG"
+    exit 2
+fi
+
+if [[ ! -f "${OUT_DIR}/${ISONAME_FULL}.iso" ]]; then
+    echo "    ERROR: ISO file was not created at ${OUT_DIR}/${ISONAME_FULL}.iso"
+    cat "$XORRISO_LOG"
+    exit 2
+fi
 
 echo ""
 echo "==> Done: ${OUT_DIR}/${ISONAME_FULL}.iso"
+ls -lh "${OUT_DIR}/${ISONAME_FULL}.iso"
 
 fi
